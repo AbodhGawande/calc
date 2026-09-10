@@ -1,7 +1,7 @@
 {
   "name": "Calc",
   "short_name": "Calc",
-  "description": "Calculator with chained stages and USD ⇄ INR conversion",
+  "description": "Math-notes style calculator page with USD ⇄ INR conversion",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

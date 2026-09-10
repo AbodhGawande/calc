@@ -1,204 +1,530 @@
-/* Calc — UI layer: rendering, gestures, history, pin, currency, backup.
-   All maths lives in engine.js. */
+/* Calc — the note page: editor, keypad, currency, backup. All maths lives in engine.js.
+
+   The page is plain text (lines joined by "\n"). The editor shows one <div class="ln"> per line,
+   and each line's answer is drawn by CSS (::after from data-r), so answers are never part of the text. */
 (function () {
   'use strict';
 
   const E = window.CalcEngine;
   const fmt = E.makeFormatter();
   const MIN = 60000, HOUR = 60 * MIN, DAY = 24 * HOUR;
-  const MAX_HISTORY = 5000;
+  const OPS = '+−×÷-*/';
+  const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
+  const CONV = /\$→₹|₹→\$/;
 
   // ---------- storage ----------
-  // localStorage is the only store. iOS may wipe it, so History ▸ Export is the safety net.
-  const K = { state: 'calc.state', history: 'calc.history', pin: 'calc.pin', settings: 'calc.settings', fx: 'calc.fx', backup: 'calc.backup' };
+  // localStorage is the only store. iOS may wipe it, so Backup ▸ Export is the safety net.
+  const K = { note: 'calc.note', settings: 'calc.settings', fx: 'calc.fx', backup: 'calc.backup', v1: 'calc.history' };
   function load(key, fallback) {
     try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); } catch (e) { return fallback; }
   }
   function save(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { toast('Storage full — export and clear history'); }
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { toast('Storage full — export a backup'); }
   }
 
-  let state = E.restore(load(K.state, null));
-  let history = load(K.history, []);
-  if (!Array.isArray(history)) history = [];
-  let pin = load(K.pin, null);
-  if (!pin || typeof pin.value !== 'number') pin = null;
-  const settings = Object.assign({ fxOn: false, from: 'USD', to: 'INR' }, load(K.settings, {}));
+  const $ = id => document.getElementById(id);
+  const els = {
+    app: $('app'), note: $('note'), placeholder: $('placeholder'), keypad: $('keypad'), fxBar: $('fxBar'),
+    undo: $('undoBtn'), dot: $('backupDot'), sheet: $('sheet'), backupLine: $('backupLine'), diag: $('diag'),
+    file: $('importFile'), toast: $('toast'),
+  };
+
+  // ---------- state ----------
+  const saved = load(K.note, null);
+  let text = saved && typeof saved.text === 'string' ? saved.text : '';
+  let updatedAt = (saved && saved.updatedAt) || 0;
+  let migrated = false;
+  if (!saved) {
+    // First launch after the update from version 1: move the old history onto the page.
+    const v1 = load(K.v1, null);
+    if (Array.isArray(v1) && v1.length) {
+      text = E.migrateV1(v1).join('\n');
+      updatedAt = Date.now();
+      migrated = !!text;
+    }
+  }
+  let sel = saved && Array.isArray(saved.sel) ? saved.sel.map(n => Math.max(0, Math.min(text.length, n | 0))) : [text.length, text.length];
+  const settings = Object.assign({ conv: '$→₹' }, load(K.settings, {}));
   let fx = load(K.fx, null);
   let backup = load(K.backup, null);
   let fxBusy = false;
+  let textMode = false;
 
-  // ---------- dom ----------
-  const $ = id => document.getElementById(id);
-  const els = {
-    screen: $('screen'), tape: $('tape'), big: $('big'), ac: $('acKey'), keypad: $('keypad'),
-    fx: $('fx'), fxPair: $('fxPair'), fxAmount: $('fxAmount'), fxStatus: $('fxStatus'), fxKey: $('fxKey'),
-    pin: $('pinChip'), histBtn: $('historyBtn'), dot: $('backupDot'),
-    sheet: $('sheet'), hlist: $('hlist'), backupLine: $('backupLine'), file: $('importFile'), toast: $('toast'),
-  };
-  els.dotKey = $('dotKey');
-  els.dotKey.textContent = fmt.decimal;
+  let saveTimer;
+  function saveNow() { clearTimeout(saveTimer); save(K.note, { text, sel, updatedAt }); }
+  function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 250); }
 
-  function h(tag, cls, text) {
-    const el = document.createElement(tag);
-    if (cls) el.className = cls;
-    if (text != null) el.textContent = text;
-    return el;
+  // ---------- editor DOM ----------
+  const BLOCK = /^(DIV|P|LI|H[1-6]|BLOCKQUOTE|PRE|UL|OL|SECTION|ARTICLE)$/;
+
+  // DOM → text. Copes with whatever the browser produced (divs, <br>s, stray text nodes).
+  function serialize(root) {
+    const lines = [''];
+    let needBreak = false, count = 0;
+    const ensure = () => { if (needBreak) { lines.push(''); needBreak = false; } count++; };
+    const visit = n => {
+      if (n.nodeType === 3) {
+        ensure();
+        const parts = n.nodeValue.split('\n');
+        lines[lines.length - 1] += parts[0];
+        for (let i = 1; i < parts.length; i++) lines.push(parts[i]);
+        return;
+      }
+      if (n.nodeType !== 1) return;
+      if (n.nodeName === 'BR') {
+        ensure();
+        const p = n.parentNode;
+        const placeholder = p && p !== root && BLOCK.test(p.nodeName) && n === p.lastChild;
+        if (!placeholder) needBreak = true;
+        return;
+      }
+      if (!BLOCK.test(n.nodeName)) { n.childNodes.forEach(visit); return; }
+      if (count) needBreak = true;
+      const before = count;
+      n.childNodes.forEach(visit);
+      if (count === before) ensure(); // an empty block is an empty line
+      needBreak = true;
+    };
+    root.childNodes.forEach(visit);
+    return lines.join('\n');
   }
-  function partsInto(el, parts) {
-    for (const p of parts) el.appendChild(h('span', 'p-' + p.k, p.text));
-  }
 
-  // One tape/history line: "2 + 3 + 4 = 9". The result carries data-value so it can be tapped or pinned.
-  function stageLine(tokens, result) {
-    const row = h('div', 'line');
-    const expr = h('span', 'expr');
-    partsInto(expr, E.renderTokens(tokens, fmt, true));
-    row.appendChild(expr);
-    row.appendChild(h('span', 'eq', '='));
-    const val = h('span', 'val', fmt.result(result));
-    val.dataset.value = result;
-    row.appendChild(val);
-    return row;
+  function isCanonicalLine(n) {
+    if (n.nodeType !== 1 || n.nodeName !== 'DIV' || n.className !== 'ln' || n.childNodes.length !== 1) return false;
+    const c = n.firstChild;
+    return c.nodeType === 3 ? c.nodeValue !== '' && !c.nodeValue.includes('\n') : c.nodeName === 'BR';
   }
+  function isCanonical() {
+    const kids = els.note.childNodes;
+    if (!kids.length) return false;
+    for (const k of kids) if (!isCanonicalLine(k)) return false;
+    return true;
+  }
+  const lineOf = div => (div.firstChild && div.firstChild.nodeType === 3 ? div.firstChild.nodeValue : '');
 
-  // ---------- main render ----------
+  // text → DOM, touching only lines that changed.
   function render() {
-    const v = E.view(state, fmt);
-
-    els.tape.textContent = '';
-    for (const st of v.tape) els.tape.appendChild(stageLine(st.tokens, st.result));
-    els.tape.scrollTop = els.tape.scrollHeight;
-
-    els.big.textContent = '';
-    partsInto(els.big, v.big);
-    if (v.value != null) els.big.dataset.value = v.value;
-    else delete els.big.dataset.value;
-    fitBig();
-
-    const back = v.acLabel !== 'AC';
-    els.ac.classList.toggle('is-back', back);
-    els.ac.setAttribute('aria-label', back ? 'Delete' : 'All clear');
-
-    renderFx(v.value);
-    renderPin();
-    save(K.state, state);
+    const lines = text.split('\n');
+    const note = els.note;
+    if (!isCanonical()) note.textContent = '';
+    while (note.childNodes.length > lines.length) note.lastChild.remove();
+    lines.forEach((s, i) => {
+      let div = note.childNodes[i];
+      if (!div) { div = document.createElement('div'); div.className = 'ln'; note.appendChild(div); }
+      else if (lineOf(div) === s) return;
+      div.textContent = '';
+      div.appendChild(s ? document.createTextNode(s) : document.createElement('br'));
+    });
+    els.placeholder.hidden = text !== '';
+    updateResults(lines);
   }
 
-  // Shrink the big line to fit, like iOS; very long expressions keep their tail visible.
-  function fitBig() {
-    const el = els.big;
-    const max = Math.min(88, Math.round(window.innerWidth * 0.21));
-    el.style.fontSize = max + 'px';
-    const avail = el.clientWidth, need = el.scrollWidth;
-    if (need > avail) el.style.fontSize = Math.max(34, Math.floor((max * avail) / need)) + 'px';
-    el.scrollLeft = el.scrollWidth;
+  // ---------- selection (as absolute offsets into text) ----------
+  function absOffset(node, offset) {
+    if (node === els.note) {
+      const lines = text.split('\n');
+      let p = 0;
+      for (let i = 0; i < Math.min(offset, lines.length); i++) p += lines[i].length + 1;
+      return Math.min(p, text.length);
+    }
+    const pre = document.createRange();
+    pre.selectNodeContents(els.note);
+    pre.setEnd(node, offset);
+    return serialize(pre.cloneContents()).length;
   }
+  function readSel() {
+    const s = window.getSelection();
+    if (!s || !s.rangeCount) return null;
+    const r = s.getRangeAt(0);
+    if (!els.note.contains(r.startContainer) || !els.note.contains(r.endContainer)) return null;
+    const a = absOffset(r.startContainer, r.startOffset);
+    const b = r.collapsed ? a : absOffset(r.endContainer, r.endOffset);
+    return [Math.min(a, text.length), Math.min(b, text.length)];
+  }
+  function syncSel() {
+    if (document.activeElement !== els.note) return;
+    const s = readSel();
+    if (s) sel = s;
+  }
+  function domPos(abs) {
+    const lines = text.split('\n');
+    let i = 0, rem = abs;
+    while (i < lines.length - 1 && rem > lines[i].length) { rem -= lines[i].length + 1; i++; }
+    const div = els.note.childNodes[i];
+    if (!div) return [els.note, els.note.childNodes.length];
+    const t = div.firstChild;
+    return t && t.nodeType === 3 ? [t, Math.min(rem, t.nodeValue.length)] : [div, 0];
+  }
+  function applySel() {
+    if (document.activeElement !== els.note) return;
+    const a = domPos(sel[0]), b = domPos(sel[1]);
+    const r = document.createRange();
+    r.setStart(a[0], a[1]);
+    r.setEnd(b[0], b[1]);
+    const s = window.getSelection();
+    s.removeAllRanges();
+    s.addRange(r);
+  }
+  function ensureFocus() {
+    if (document.activeElement === els.note) return;
+    els.note.focus({ preventScroll: true });
+    applySel();
+    revealCaret();
+  }
+  function revealCaret() {
+    const div = els.note.childNodes[text.slice(0, sel[1]).split('\n').length - 1];
+    if (!div) return;
+    let rect = null;
+    const s = window.getSelection();
+    if (document.activeElement === els.note && s.rangeCount) {
+      const rects = s.getRangeAt(0).getClientRects();
+      if (rects.length) rect = rects[rects.length - 1];
+    }
+    if (!rect) rect = div.getBoundingClientRect();
+    const box = els.note.getBoundingClientRect();
+    if (rect.bottom > box.bottom - 12) els.note.scrollTop += rect.bottom - box.bottom + 24;
+    else if (rect.top < box.top + 4) els.note.scrollTop -= box.top - rect.top + 8;
+  }
+
+  // ---------- answers ----------
+  function lineValue(line) {
+    const a = E.analyzeLine(line);
+    if (!a) return null;
+    if (!isFinite(a.value)) return { text: 'Error', value: null };
+    if (!a.conv) return { text: fmt.result(a.value), value: a.value };
+    const [from, to] = a.conv.split('>');
+    const r = rate(from, to);
+    if (r == null) return { text: '—', value: null };
+    const v = round2(a.value * r);
+    return { text: money(v, to), value: v };
+  }
+
+  function updateResults(lines = text.split('\n')) {
+    const divs = els.note.childNodes;
+    let anyConv = false;
+    for (let i = 0; i < divs.length; i++) {
+      const d = divs[i], line = lines[i] || '';
+      if (d.nodeType !== 1) continue;
+      const res = lineValue(line);
+      if (res) {
+        if (d.getAttribute('data-r') !== res.text) d.setAttribute('data-r', res.text);
+        if (res.value != null) d.dataset.v = res.value;
+        else delete d.dataset.v;
+      } else if (d.hasAttribute('data-r')) {
+        d.removeAttribute('data-r');
+        delete d.dataset.v;
+      }
+      if (CONV.test(line)) anyConv = true;
+    }
+    renderFx(anyConv);
+  }
+
+  // ---------- editing ----------
+  function lineAt(pos) {
+    const s = pos === 0 ? 0 : text.lastIndexOf('\n', pos - 1) + 1;
+    let e = text.indexOf('\n', pos);
+    if (e < 0) e = text.length;
+    return { s, e, line: text.slice(s, e) };
+  }
+  function insert(str) {
+    const [a, b] = sel;
+    text = text.slice(0, a) + str + text.slice(b);
+    sel = [a + str.length, a + str.length];
+  }
+  function setLine(s, e, line) {
+    text = text.slice(0, s) + line + text.slice(e);
+    sel = [s + line.length, s + line.length];
+  }
+  // Caret sits at the end of a line that already has its "=".
+  function afterAnswer() {
+    if (sel[0] !== sel[1]) return false;
+    const { e, line } = lineAt(sel[1]);
+    return /=\s*$/.test(line) && text.slice(sel[1], e).trim() === '';
+  }
+  function newLine() {
+    const { e } = lineAt(sel[1]);
+    sel = [e, e];
+    insert('\n');
+  }
+
+  function operator(sym) {
+    if (afterAnswer()) {
+      const { s, e, line } = lineAt(sel[1]);
+      const cont = E.continueLine(line, sym);
+      if (cont != null) { setLine(s, e, cont); return; }
+      const v = lineValue(line); // a conversion: carry on from the converted amount on a new line
+      if (v && v.value != null) { newLine(); insert(E.rawString(v.value) + sym); return; }
+    }
+    if (sel[0] === sel[1]) {
+      const prev = text[sel[0] - 1];
+      // Pressing another operator replaces the last one — except "−" after × or ÷ (a negative number).
+      if (prev && OPS.includes(prev) && !(sym === '−' && (prev === '×' || prev === '÷'))) sel = [sel[0] - 1, sel[0]];
+    }
+    insert(sym);
+  }
+
+  function equals() {
+    const { s, e, line } = lineAt(sel[1]);
+    if (/=\s*$/.test(line)) { sel = [e, e]; return; } // already has "=": just finish editing the line
+    const body = line.replace(/[\s+\-−×÷*/]+$/, '');
+    if (/\d/.test(body)) setLine(s, e, body + '=');
+  }
+
+  function backspace() {
+    let [a, b] = sel;
+    if (a === b) {
+      if (a === 0) return;
+      const m = /\s?(\$→₹|₹→\$)$/.exec(text.slice(Math.max(0, a - 4), a)); // the currency token goes in one step
+      a -= m ? m[0].length : 1;
+    }
+    sel = [a, b];
+    insert('');
+  }
+
+  // $₹ key: make the caret's line a conversion, or flip the direction of one that already is.
+  function convert() {
+    const { s, e, line } = lineAt(sel[1]);
+    const all = [...line.matchAll(/\$→₹|₹→\$/g)];
+    let next;
+    if (all.length) {
+      const m = all[all.length - 1];
+      const flipped = m[0] === '$→₹' ? '₹→$' : '$→₹';
+      next = line.slice(0, m.index) + flipped + line.slice(m.index + m[0].length);
+      settings.conv = flipped;
+    } else {
+      const body = line.replace(/\s*=\s*$/, '').replace(/\s+$/, '');
+      if (!/\d/.test(body)) { toast('Type an amount first'); return; }
+      next = body + ' ' + settings.conv + '=';
+    }
+    save(K.settings, settings);
+    setLine(s, e, next);
+    if (!fx) refreshFx();
+  }
+
+  function press(k) {
+    syncSel();
+    const before = { text, sel: sel.slice() };
+    let kind = 'key';
+    if (/^[0-9]$/.test(k) || k === '00' || k === '.' || k === '(') {
+      if (k !== '(') kind = 'type';
+      if (afterAnswer()) newLine(); // a new number after an answer starts a new line, as on a calculator
+      insert(k);
+    } else if (k === ')' || k === '%') insert(k);
+    else if (OPMAP[k]) operator(OPMAP[k]);
+    else if (k === '=') equals();
+    else if (k === 'back') { kind = 'back'; backspace(); }
+    else if (k === 'enter') insert('\n');
+    else if (k === 'fx') convert();
+    else return;
+    const textChanged = text !== before.text;
+    if (textChanged) pushUndo(before, kind);
+    if (textChanged || sel[0] !== before.sel[0] || sel[1] !== before.sel[1]) changed(textChanged);
+  }
+
+  function changed(textChanged = true) {
+    if (textChanged) updatedAt = Date.now();
+    render();
+    applySel();
+    revealCaret();
+    scheduleSave();
+    updateDot();
+  }
+
+  // ---------- undo ----------
+  const undoStack = [];
+  let lastKind = '', lastAt = 0;
+  function pushUndo(state, kind) {
+    const now = Date.now();
+    const burst = kind === lastKind && (kind === 'type' || kind === 'back' || kind === 'native') && now - lastAt < 1500;
+    lastKind = kind;
+    lastAt = now;
+    if (burst) return; // a run of typing undoes in one step
+    undoStack.push(state);
+    if (undoStack.length > 200) undoStack.shift();
+    els.undo.classList.remove('off');
+  }
+  function undo() {
+    const s = undoStack.pop();
+    if (!s) return;
+    text = s.text;
+    sel = s.sel;
+    lastKind = '';
+    changed();
+    els.undo.classList.toggle('off', !undoStack.length);
+  }
+  els.undo.addEventListener('click', undo);
+
+  // ---------- typing with the iPhone keyboard (ABC), paste ----------
+  let nativeBefore = null;
+  els.note.addEventListener('beforeinput', e => {
+    if (e.inputType === 'historyUndo') { e.preventDefault(); undo(); return; }
+    if (e.inputType === 'historyRedo') { e.preventDefault(); return; }
+    if (!nativeBefore) { syncSel(); nativeBefore = { text, sel: sel.slice() }; }
+  });
+  function afterNativeInput() {
+    text = serialize(els.note);
+    const s = readSel();
+    if (s) sel = s;
+    if (!isCanonical()) { render(); applySel(); }
+    else { els.placeholder.hidden = text !== ''; updateResults(); }
+    if (nativeBefore && nativeBefore.text !== text) pushUndo(nativeBefore, 'native');
+    nativeBefore = null;
+    updatedAt = Date.now();
+    scheduleSave();
+    updateDot();
+  }
+  els.note.addEventListener('input', e => { if (!e.isComposing) afterNativeInput(); });
+  els.note.addEventListener('compositionend', afterNativeInput);
+  els.note.addEventListener('paste', e => {
+    e.preventDefault();
+    const t = (e.clipboardData && e.clipboardData.getData('text/plain') || '').replace(/\r\n?/g, '\n');
+    if (!t) return;
+    syncSel();
+    pushUndo({ text, sel: sel.slice() }, 'paste');
+    insert(t);
+    changed();
+  });
+  els.note.addEventListener('drop', e => e.preventDefault());
+  document.addEventListener('selectionchange', () => {
+    if (document.activeElement !== els.note) return;
+    const s = readSel();
+    if (s) { sel = s; scheduleSave(); }
+  });
+
+  // ---------- tap an answer to insert it at the cursor ----------
+  function answerAt(x, y) {
+    const el = document.elementFromPoint(x, y);
+    const div = el && el.closest && el.closest('.ln');
+    if (!div || !els.note.contains(div) || div.dataset.v == null) return null;
+    const r = document.createRange();
+    r.selectNodeContents(div);
+    const rects = [...r.getClientRects()].filter(q => q.width || q.height);
+    if (!rects.length) return null;
+    const last = rects[rects.length - 1], box = div.getBoundingClientRect();
+    const onTextRow = y >= last.top - 2 && y <= last.bottom + 2 && x > last.right + 1;
+    const belowText = y > last.bottom + 2 && y <= box.bottom; // the answer wrapped onto its own row
+    return onTextRow || belowText ? div : null;
+  }
+  let pendingAnswer = null;
+  els.note.addEventListener('pointerdown', e => {
+    const div = answerAt(e.clientX, e.clientY);
+    pendingAnswer = div ? { div, x: e.clientX, y: e.clientY } : null;
+  });
+  // Stop the tap from moving the cursor onto the answer.
+  els.note.addEventListener('touchstart', e => { if (pendingAnswer) e.preventDefault(); }, { passive: false });
+  els.note.addEventListener('mousedown', e => { if (pendingAnswer) e.preventDefault(); });
+  els.note.addEventListener('pointerup', e => {
+    const h = pendingAnswer;
+    pendingAnswer = null;
+    if (!h || Math.hypot(e.clientX - h.x, e.clientY - h.y) > 10) return;
+    const before = { text, sel: sel.slice() };
+    if (afterAnswer()) newLine();
+    insert(E.rawString(+h.div.dataset.v));
+    pushUndo(before, 'key');
+    changed();
+    ensureFocus();
+  });
+  els.note.addEventListener('pointercancel', () => { pendingAnswer = null; });
 
   // ---------- keypad ----------
-  function press(k) {
-    if (k === 'fx') { toggleFx(); return; }
-    if (k === 'ac') k = els.ac.classList.contains('is-back') ? 'back' : 'clear';
-    const ev = E.press(state, k);
-    if (ev && ev.type === 'stage') saveChain(ev.chain);
-    render();
-  }
-
   const downKeys = new Map();
+  let repeatTimer = null;
+  function stopRepeat() { clearTimeout(repeatTimer); clearInterval(repeatTimer); repeatTimer = null; }
+
   els.keypad.addEventListener('pointerdown', e => {
     const b = e.target.closest('.key');
     if (!b) return;
     e.preventDefault();
     b.classList.add('down');
     downKeys.set(e.pointerId, b);
-    press(b.dataset.key);
+    const k = b.dataset.key;
+    if (k === 'abc') return;
+    press(k);
+    if (k === 'back') {
+      stopRepeat();
+      repeatTimer = setTimeout(() => { repeatTimer = setInterval(() => press('back'), 70); }, 450);
+    }
   });
   function release(e) {
     const b = downKeys.get(e.pointerId);
     if (b) { b.classList.remove('down'); downKeys.delete(e.pointerId); }
+    stopRepeat();
   }
   document.addEventListener('pointerup', release);
   document.addEventListener('pointercancel', release);
+  // Keep the cursor in the page while tapping keys. Focus changes need a completed tap on iPhone.
+  els.keypad.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+  els.keypad.addEventListener('touchend', e => afterKeyTap(e.target.closest && e.target.closest('.key')));
+  els.keypad.addEventListener('click', e => afterKeyTap(e.target.closest('.key')));
+  function afterKeyTap(b) {
+    if (!b) return;
+    if (b.dataset.key === 'abc') setTextMode(true);
+    else ensureFocus();
+  }
 
-  // Hardware keyboard (handy on iPad / desktop).
-  const KEYBOARD = { Enter: '=', '=': '=', Backspace: 'back', Escape: 'clear', x: '*', X: '*', '*': '*', '/': '/', '+': '+', '-': '-', '%': '%', '.': '.', ',': '.' };
-  document.addEventListener('keydown', e => {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (els.sheet.classList.contains('open')) { if (e.key === 'Escape') closeHistory(); return; }
-    const k = /^[0-9]$/.test(e.key) ? e.key : KEYBOARD[e.key];
-    if (!k) return;
-    e.preventDefault();
-    const b = els.keypad.querySelector(`[data-key="${k === 'back' || k === 'clear' ? 'ac' : k}"]`);
-    if (b) { b.classList.add('down'); setTimeout(() => b.classList.remove('down'), 90); }
-    const ev = E.press(state, k);
-    if (ev && ev.type === 'stage') saveChain(ev.chain);
-    render();
+  // ---------- ABC: the iPhone keyboard for typing words ----------
+  let switching = false;
+  function setTextMode(on) {
+    syncSel();
+    textMode = on;
+    els.app.classList.toggle('textmode', on);
+    els.note.setAttribute('inputmode', on ? 'text' : 'none');
+    switching = true;
+    els.note.blur();
+    els.note.focus({ preventScroll: true });
+    applySel();
+    switching = false;
+    sizeApp();
+    setTimeout(() => { sizeApp(); revealCaret(); }, 350);
+  }
+  els.note.addEventListener('blur', () => {
+    if (!textMode || switching) return;
+    // Keyboard dismissed: bring the keypad back.
+    setTimeout(() => {
+      if (!textMode || document.activeElement === els.note) return;
+      textMode = false;
+      els.app.classList.remove('textmode');
+      els.note.setAttribute('inputmode', 'none');
+      sizeApp();
+    }, 50);
   });
+  $('keypadBtn').addEventListener('click', () => setTextMode(false));
 
-  // ---------- gestures: tap, long-press (hold) and horizontal swipe ----------
-  function gestures(container, handlers) {
-    let g = null;
-    container.addEventListener('pointerdown', e => {
-      if (g) clearTimeout(g.timer);
-      g = { id: e.pointerId, x: e.clientX, y: e.clientY, target: e.target, fired: false };
-      const mine = g;
-      if (handlers.hold) {
-        g.timer = setTimeout(() => {
-          if (g === mine && handlers.hold(mine.target) !== false) mine.fired = true;
-        }, 500);
-      }
-    });
-    container.addEventListener('pointermove', e => {
-      if (!g || e.pointerId !== g.id) return;
-      const dx = e.clientX - g.x, dy = e.clientY - g.y;
-      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) clearTimeout(g.timer);
-      if (handlers.swipe && !g.fired && Math.abs(dx) > 40 && Math.abs(dy) < 30) { g.fired = true; handlers.swipe(); }
-    });
-    container.addEventListener('pointerup', e => {
-      if (!g || e.pointerId !== g.id) return;
-      clearTimeout(g.timer);
-      const moved = Math.hypot(e.clientX - g.x, e.clientY - g.y) > 10;
-      if (!g.fired && !moved && handlers.tap) handlers.tap(g.target);
-      g = null;
-    });
-    container.addEventListener('pointercancel', () => { if (g) clearTimeout(g.timer); g = null; });
+  // Fill the whole screen. On the iPhone Home Screen the page can report less than the full height,
+  // which left a band under the keypad; while the keyboard is up, fit the space above it instead.
+  function sizeApp() {
+    let h = window.innerHeight, shift = 0;
+    const vv = window.visualViewport;
+    if (textMode && vv) {
+      h = vv.height;
+      shift = vv.offsetTop;
+    } else if (navigator.standalone === true) {
+      const portrait = window.innerHeight >= window.innerWidth;
+      const full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+      if (full > h) h = full;
+    }
+    document.documentElement.style.setProperty('--app-h', h + 'px');
+    els.app.style.transform = shift ? `translateY(${shift}px)` : '';
+  }
+  window.addEventListener('resize', sizeApp);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', sizeApp);
+    window.visualViewport.addEventListener('scroll', sizeApp);
   }
 
-  const valueAt = t => {
-    const el = t.closest && t.closest('[data-value]');
-    return el ? { el, value: +el.dataset.value } : null;
-  };
-
-  // Display: tap a tape result to reuse it, hold any number to pin it, swipe to delete a digit (as on iOS).
-  gestures(els.screen, {
-    tap: t => { const hit = valueAt(t); if (hit && hit.el !== els.big) insertValue(hit.value); },
-    hold: t => { const hit = valueAt(t); if (!hit) return false; setPin(hit.value); },
-    swipe: () => press('back'),
-  });
-
-  function insertValue(v) {
-    E.insert(state, v);
-    render();
-  }
-
-  // ---------- pin ----------
-  function setPin(v) {
-    pin = { value: v };
-    save(K.pin, pin);
-    toast('Pinned ' + fmt.result(v));
-    render();
-  }
-  function renderPin() {
-    els.pin.hidden = !pin;
-    if (pin) els.pin.querySelector('.pin-val').textContent = fmt.result(pin.value);
-  }
-  gestures(els.pin, {
-    tap: () => { if (pin) insertValue(pin.value); },
-    hold: () => { pin = null; save(K.pin, null); toast('Unpinned'); render(); },
+  // ---------- clear ----------
+  $('clearBtn').addEventListener('click', () => {
+    if (!text) return;
+    if (!confirm('Clear the whole page?\n\nYou can bring it back with Undo (↶) until you close the app.')) return;
+    pushUndo({ text, sel: sel.slice() }, 'clear');
+    text = '';
+    sel = [0, 0];
+    changed();
+    toast('Page cleared');
   });
 
   // ---------- currency ----------
-  // Primary: ECB reference rates via Frankfurter. Fallback: ExchangeRate-API open endpoint. Both keyless.
+  // Primary: ECB reference rates via Frankfurter. Fallback: ExchangeRate-API's open endpoint. Both keyless.
   const FX_SOURCES = [
     {
       name: 'ECB (Frankfurter)',
@@ -214,12 +540,11 @@
     },
   ];
 
-  function rate(from = settings.from, to = settings.to) {
+  function rate(from, to) {
     if (!fx || !fx.rates) return null;
     const a = fx.rates[from], b = fx.rates[to];
     return a > 0 && b > 0 ? b / a : null;
   }
-
   const moneyFmts = {};
   function money(v, cur) {
     const f = moneyFmts[cur] || (moneyFmts[cur] = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }));
@@ -227,46 +552,36 @@
   }
   const round2 = v => Math.round(v * 100) / 100;
 
-  // "1 USD = ₹95.44" — always quoted from the stronger currency so it never reads "$0.01".
-  function rateText(from, to, r) {
-    return r >= 1 ? `1 ${from} = ${money(r, to)}` : `1 ${to} = ${money(1 / r, from)}`;
-  }
-
   function freshness(age) {
-    const m = Math.floor(age / MIN), hr = Math.floor(age / HOUR), d = Math.floor(age / DAY);
+    const m = Math.floor(age / MIN), h = Math.floor(age / HOUR), d = Math.floor(age / DAY);
     if (age >= DAY) return `⚠ rate is ${d} day${d > 1 ? 's' : ''} old`;
-    if (hr >= 1) return `updated ${hr} h ago`;
+    if (h >= 1) return `updated ${h} h ago`;
     if (m >= 1) return `updated ${m} min ago`;
     return 'updated just now';
   }
 
-  function renderFx(value) {
-    els.fxKey.classList.toggle('on', settings.fxOn);
-    els.fx.hidden = !settings.fxOn;
-    if (!settings.fxOn) return;
-
-    els.fxPair.innerHTML = `${settings.from} → ${settings.to} <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h10l-3-3M13 11H3l3 3"/></svg>`;
-    const r = rate();
-    els.fxAmount.textContent = r != null && value != null ? '≈ ' + money(round2(value * r), settings.to) : '—';
-
-    let text, stale = false;
-    if (!fx || r == null) {
-      text = fxBusy ? 'Fetching rate…' : 'No rate yet — go online once to download it';
+  function renderFx(show) {
+    els.fxBar.hidden = !show;
+    if (!show) return;
+    const r = rate('USD', 'INR');
+    let txt, stale = false;
+    if (r == null) {
+      txt = fxBusy ? 'Fetching the exchange rate…' : 'No exchange rate yet — go online once';
       stale = !fxBusy;
     } else {
       const age = Date.now() - fx.fetchedAt;
       stale = age >= DAY;
-      text = rateText(settings.from, settings.to, r) + ' · ' + (fxBusy ? 'updating…' : freshness(age));
+      txt = `1 USD = ${money(r, 'INR')} · ${fxBusy ? 'updating…' : freshness(age)}`;
     }
-    els.fxStatus.textContent = text;
-    els.fxStatus.classList.toggle('stale', stale);
+    els.fxBar.textContent = txt;
+    els.fxBar.classList.toggle('stale', stale);
   }
 
   async function refreshFx({ force = false, quiet = true } = {}) {
     if (fxBusy) return;
     if (!force && fx && Date.now() - fx.fetchedAt < HOUR) return;
     fxBusy = true;
-    render();
+    updateResults();
     let ok = false;
     for (const src of FX_SOURCES) {
       try {
@@ -278,7 +593,7 @@
         const got = src.parse(await res.json());
         if (!got) continue;
         got.rates.USD = 1;
-        if (![settings.from, settings.to].every(c => got.rates[c] > 0)) continue;
+        if (!(got.rates.INR > 0)) continue;
         fx = { rates: got.rates, date: got.date, fetchedAt: Date.now(), source: src.name };
         save(K.fx, fx);
         ok = true;
@@ -288,179 +603,47 @@
       }
     }
     fxBusy = false;
-    render();
-    if (!quiet) toast(ok ? 'Rate updated' : 'Couldn’t reach the rate service — using saved rate');
+    updateResults();
+    if (!quiet) toast(ok ? 'Rate updated' : 'Couldn’t reach the rate service — using the saved rate');
   }
+  els.fxBar.addEventListener('click', () => refreshFx({ force: true, quiet: false }));
 
-  function toggleFx() {
-    settings.fxOn = !settings.fxOn;
-    save(K.settings, settings);
-    if (settings.fxOn) refreshFx();
-    render();
+  // ---------- backup ----------
+  function updateDot() {
+    const overdue = !backup || Date.now() - backup.at > 14 * DAY;
+    const unsaved = updatedAt > (backup ? backup.at : 0);
+    els.dot.hidden = !(overdue && unsaved && text.split('\n').length >= 5);
   }
-
-  function swapFx() {
-    [settings.from, settings.to] = [settings.to, settings.from];
-    save(K.settings, settings);
-    render();
-  }
-
-  // Tap the converted amount: it becomes the main number, and the direction flips so the line converts back.
-  function useConverted() {
-    const value = E.view(state, fmt).value, r = rate();
-    if (value == null || r == null) return;
-    const result = round2(value * r);
-    addEntry({ id: E.newId(), ts: Date.now(), type: 'fx', from: settings.from, to: settings.to, amount: value, result, rate: r });
-    E.press(state, 'clear');
-    E.insert(state, result);
-    const now = settings.to;
-    swapFx();
-    toast('Now in ' + now);
-  }
-
-  els.fxPair.addEventListener('click', swapFx);
-  els.fxAmount.addEventListener('click', useConverted);
-  els.fxStatus.addEventListener('click', () => refreshFx({ force: true, quiet: false }));
-
-  // ---------- history ----------
-  function persistHistory() {
-    if (history.length > MAX_HISTORY) history = history.slice(-MAX_HISTORY);
-    save(K.history, history);
-    updateDot();
-  }
-
-  function saveChain(chain) {
-    let i = history.length - 1;
-    while (i >= 0 && history[i].id !== chain.id) i--;
-    const entry = { id: chain.id, ts: i >= 0 ? history[i].ts : Date.now(), type: 'calc', stages: chain.stages };
-    if (i >= 0) history[i] = entry;
-    else history.push(entry);
-    persistHistory();
-  }
-
-  function addEntry(entry) {
-    history.push(entry);
-    persistHistory();
-  }
-
-  const sameDay = (a, b) => a.toDateString() === b.toDateString();
-  const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-  const dayFmtYear = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-  const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
-  function dayLabel(ts) {
-    const d = new Date(ts), now = new Date();
-    if (sameDay(d, now)) return 'Today';
-    if (sameDay(d, new Date(now.getTime() - DAY))) return 'Yesterday';
-    return d.getFullYear() === now.getFullYear() ? dayFmt.format(d) : dayFmtYear.format(d);
-  }
-
-  function entryEl(e) {
-    const el = h('div', 'entry');
-    el.dataset.id = e.id;
-    if (e.type === 'fx') {
-      const row = h('div', 'line final');
-      row.appendChild(h('span', 'expr', money(e.amount, e.from)));
-      row.appendChild(h('span', 'eq', '→'));
-      const val = h('span', 'val', money(e.result, e.to));
-      val.dataset.value = e.result;
-      row.appendChild(val);
-      el.appendChild(row);
-      el.appendChild(h('div', 'meta', `${timeFmt.format(e.ts)} · ${rateText(e.from, e.to, e.rate)}`));
-    } else {
-      e.stages.forEach((st, i) => {
-        const line = stageLine(st.tokens, st.result);
-        if (i === e.stages.length - 1) line.classList.add('final');
-        el.appendChild(line);
-      });
-      el.appendChild(h('div', 'meta', timeFmt.format(e.ts)));
+  function renderBackupLine() {
+    const el = els.backupLine;
+    if (!backup) el.textContent = text ? 'Never backed up' : 'Nothing to back up yet';
+    else {
+      const d = Math.floor((Date.now() - backup.at) / DAY);
+      const when = d === 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago';
+      el.textContent = `Last backup ${when}` + (updatedAt > backup.at ? ' · page changed since' : '');
     }
-    return el;
+    el.classList.toggle('warn', !els.dot.hidden);
+    els.diag.textContent = `Screen ${screen.width}×${screen.height} · view ${window.innerWidth}×${window.innerHeight} · ` +
+      `${navigator.standalone ? 'Home Screen app' : 'browser'} · version 2`;
   }
-
-  let histLimit = 150;
-  function renderHistory() {
+  function openSheet() {
     renderBackupLine();
-    const list = els.hlist;
-    list.textContent = '';
-    if (!history.length) {
-      list.appendChild(h('p', 'empty', 'No history yet.\nFinished calculations and conversions show up here.'));
-      return;
-    }
-    let lastDay = '';
-    for (const e of history.slice(-histLimit).reverse()) {
-      const day = dayLabel(e.ts);
-      if (day !== lastDay) { list.appendChild(h('h3', 'day', day)); lastDay = day; }
-      list.appendChild(entryEl(e));
-    }
-    if (history.length > histLimit) {
-      const more = h('button', 'more', `Show older (${history.length - histLimit} more)`);
-      more.addEventListener('click', () => { histLimit += 300; renderHistory(); });
-      list.appendChild(more);
-    }
-  }
-
-  function openHistory() {
-    histLimit = 150;
-    renderHistory();
-    els.hlist.scrollTop = 0;
     els.sheet.classList.add('open');
     els.sheet.inert = false;
     els.sheet.setAttribute('aria-hidden', 'false');
   }
-  function closeHistory() {
+  function closeSheet() {
     els.sheet.classList.remove('open');
     els.sheet.inert = true;
     els.sheet.setAttribute('aria-hidden', 'true');
   }
+  $('backupBtn').addEventListener('click', openSheet);
+  $('sheetDone').addEventListener('click', closeSheet);
+  els.sheet.addEventListener('click', e => { if (e.target === els.sheet) closeSheet(); });
 
-  gestures(els.hlist, {
-    tap: t => { const hit = valueAt(t); if (hit) { insertValue(hit.value); closeHistory(); } },
-    hold: t => {
-      const hit = valueAt(t);
-      if (hit) { setPin(hit.value); return; }
-      const entry = t.closest && t.closest('.entry');
-      if (!entry) return false;
-      if (confirm('Delete this entry?')) {
-        history = history.filter(e => e.id !== entry.dataset.id);
-        persistHistory();
-        renderHistory();
-      }
-    },
-  });
-
-  els.histBtn.addEventListener('click', openHistory);
-  $('sheetDone').addEventListener('click', closeHistory);
-  $('clearBtn').addEventListener('click', () => {
-    if (!history.length) return;
-    if (!confirm('Delete all history?\n\nIf you want to keep it, tap Cancel and Export a backup first.')) return;
-    history = [];
-    persistHistory();
-    renderHistory();
-  });
-
-  // ---------- backup (export / import) ----------
-  const newSinceBackup = () => history.filter(e => !backup || e.ts > backup.at).length;
-
-  function updateDot() {
-    const overdue = !backup || Date.now() - backup.at > 14 * DAY;
-    els.dot.hidden = !(overdue && newSinceBackup() >= 10);
-  }
-
-  function renderBackupLine() {
-    const n = newSinceBackup();
-    const el = els.backupLine;
-    if (!backup) {
-      el.textContent = history.length ? `Never backed up · ${n} entr${n === 1 ? 'y' : 'ies'} only on this phone` : 'Export saves a backup copy to Files.';
-    } else {
-      const d = Math.floor((Date.now() - backup.at) / DAY);
-      el.textContent = `Last backup ${d === 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago'} · ${n} new since`;
-    }
-    el.classList.toggle('warn', !els.dot.hidden);
-  }
-
-  async function exportHistory() {
+  async function exportPage() {
     const stamp = new Date().toISOString().slice(0, 10);
-    const body = JSON.stringify({ app: 'calc', version: 1, exportedAt: new Date().toISOString(), history, pin, settings, fx });
+    const body = JSON.stringify({ app: 'calc', version: 2, exportedAt: new Date().toISOString(), text, settings, fx });
     // iOS share sheet ("Save to Files"). Some browsers won't share .json, so fall back to .txt, then to a download.
     const candidates = [
       new File([body], `calc-backup-${stamp}.json`, { type: 'application/json' }),
@@ -489,34 +672,31 @@
     }
   }
 
-  async function importHistory(file) {
+  async function importPage(file) {
     try {
       const data = JSON.parse(await file.text());
-      const incoming = Array.isArray(data) ? data : data && data.history;
-      if (!Array.isArray(incoming)) throw new Error('not a backup');
-      const have = new Set(history.map(e => e.id));
-      const valid = e => e && typeof e.id === 'string' && typeof e.ts === 'number' && (
-        (e.type === 'fx' && typeof e.amount === 'number' && typeof e.result === 'number' && typeof e.rate === 'number' && typeof e.from === 'string' && typeof e.to === 'string') ||
-        (e.type === 'calc' && Array.isArray(e.stages) && e.stages.length && e.stages.every(E.validStage))
-      );
-      const add = incoming.filter(e => valid(e) && !have.has(e.id));
-      history = history.concat(add).sort((a, b) => a.ts - b.ts);
-      if (!pin && data.pin && typeof data.pin.value === 'number') { pin = data.pin; save(K.pin, pin); }
-      persistHistory();
-      renderHistory();
-      render();
-      toast(add.length ? `Imported ${add.length} entr${add.length === 1 ? 'y' : 'ies'}` : 'Nothing new to import');
+      let incoming = '';
+      if (data && typeof data.text === 'string') incoming = data.text;
+      else if (data && Array.isArray(data.history)) incoming = E.migrateV1(data.history).join('\n'); // version 1 backup
+      incoming = incoming.replace(/\s+$/, '');
+      if (!incoming) { toast('That backup is empty'); return; }
+      if (text.includes(incoming)) { toast('That backup is already on the page'); return; }
+      pushUndo({ text, sel: sel.slice() }, 'import');
+      text = text ? text.replace(/\n+$/, '') + '\n' + incoming : incoming;
+      sel = [text.length, text.length];
+      changed();
+      closeSheet();
+      toast('Backup added to the end of the page');
     } catch (e) {
       toast('That file isn’t a Calc backup');
     }
   }
-
-  $('exportBtn').addEventListener('click', exportHistory);
+  $('exportBtn').addEventListener('click', exportPage);
   $('importBtn').addEventListener('click', () => els.file.click());
   els.file.addEventListener('change', () => {
     const f = els.file.files && els.file.files[0];
     els.file.value = '';
-    if (f) importHistory(f);
+    if (f) importPage(f);
   });
 
   // ---------- toast ----------
@@ -525,23 +705,36 @@
     els.toast.textContent = msg;
     els.toast.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => els.toast.classList.remove('show'), 1800);
+    toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2000);
   }
 
   // ---------- start ----------
-  document.addEventListener('contextmenu', e => e.preventDefault());
   document.addEventListener('gesturestart', e => e.preventDefault());
-  window.addEventListener('resize', fitBig);
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) { refreshFx(); render(); }
+    if (document.hidden) saveNow();
+    else { refreshFx(); updateResults(); }
   });
+  window.addEventListener('pagehide', saveNow);
   window.addEventListener('online', () => refreshFx());
-  setInterval(() => { if (!document.hidden && settings.fxOn) renderFx(E.view(state, fmt).value); }, MIN);
+  setInterval(() => { if (!document.hidden) updateResults(); }, MIN); // keeps "updated N min ago" current
 
+  sizeApp();
   render();
   updateDot();
-  refreshFx(); // keep the cached rate warm even while conversion is off, so it works offline later
+  refreshFx(); // keep the saved rate fresh even when no line converts, so conversion works offline later
+  if (migrated) { saveNow(); toast('Your earlier calculations are on the page'); }
 
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) {
+    // When an update takes over, reload once so the new version shows straight away.
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController) return;
+      saveNow();
+      location.reload();
+    });
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+
+  window.__calc = { get text() { return text; }, get sel() { return sel; } }; // for debugging from the console
 })();

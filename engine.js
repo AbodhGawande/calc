@@ -1,32 +1,15 @@
-/* Calc engine — pure calculator logic, no DOM.
+/* Calc engine — pure maths for the note page, no DOM.
    Loaded by the page as window.CalcEngine and by the Node tests via require().
 
-   Model: a "chain" is one calculation made of stages. Every "=" finishes a stage
-   (shown on the tape as "2 + 3 + 4 = 9"). Pressing an operator right after "="
-   starts the next stage on top of that result ("× 5 = 45"), so "=" works as
-   "lock in what I have so far" — the bracket behaviour, without a bracket key. */
+   A line is calculated when it ends with "=". Words are allowed: the calculation is the
+   longest run of maths at the end of the line, so "Hotel 3 nights (120+95)×2 =" works out (120+95)×2.
+   A currency token just before "=" ("$→₹" or "₹→$") makes the line a conversion. */
 (function (root) {
   'use strict';
 
   const SYMBOL = { '+': '+', '-': '−', '*': '×', '/': '÷' };
-  const MAX_DIGITS = 15;
-
-  function blank() {
-    // tokens: the stage being typed. stages: finished stages of the current chain.
-    return { tokens: [], stages: [], done: false, error: false, chainId: null, lastOp: null };
-  }
-
-  function newId() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-  }
-
-  const last = s => s.tokens[s.tokens.length - 1];
-  const lastResult = s => (s.stages.length ? s.stages[s.stages.length - 1].result : 0);
-  const hasOp = tokens => tokens.some(t => t.t === 'op');
-
-  function startFresh(s) {
-    Object.assign(s, blank());
-  }
+  const MATH_CHAR = /[0-9.,\s+\-−–*×/÷%()$₹]/;
+  const CONV_AT_END = /(\$→₹|₹→\$)\s*$/;
 
   // Plain-digit string for a computed value, e.g. 0.30000000000000004 -> "0.3".
   function rawString(v) {
@@ -36,251 +19,174 @@
     return str;
   }
 
-  function trimOps(tokens) {
-    let end = tokens.length;
-    while (end && tokens[end - 1].t === 'op') end--;
-    return tokens.slice(0, end);
-  }
-
-  // × and ÷ before + and −. Percent follows iOS: "a + b%" = a + a×b/100, "a × b%" = a × b/100.
-  function evaluate(tokens) {
-    const toks = trimOps(tokens);
-    if (!toks.length) return null;
-    let total = 0, sign = 1, term = null, mul = null, afterAdd = false;
-    for (const tok of toks) {
-      if (tok.t === 'op') {
-        if (tok.v === '+' || tok.v === '-') {
-          total += sign * term;
-          sign = tok.v === '+' ? 1 : -1;
-          term = null; mul = null; afterAdd = true;
-        } else {
-          mul = tok.v;
-        }
-        continue;
-      }
-      let v = tok.t === 'prev' ? tok.v : parseFloat(tok.s);
-      if (tok.pct) v = term === null && afterAdd ? (total * v) / 100 : v / 100;
-      if (term === null) term = v;
-      else if (mul === '*') term *= v;
-      else term /= v;
-    }
-    return total + sign * term;
-  }
-
-  function digit(s, d) {
-    if (s.done || s.error) startFresh(s);
-    const l = last(s);
-    if (l && l.t === 'num') {
-      if (l.ins) { s.tokens[s.tokens.length - 1] = { t: 'num', s: d }; return null; }
-      if (l.pct || l.s.replace(/\D/g, '').length >= MAX_DIGITS) return null;
-      if (l.s === '0') l.s = d;
-      else if (l.s === '-0') l.s = '-' + d;
-      else l.s += d;
-    } else {
-      s.tokens.push({ t: 'num', s: d });
-    }
-    return null;
-  }
-
-  function dot(s) {
-    if (s.done || s.error) startFresh(s);
-    const l = last(s);
-    if (l && l.t === 'num') {
-      if (l.ins) { s.tokens[s.tokens.length - 1] = { t: 'num', s: '0.' }; return null; }
-      if (l.pct || l.s.includes('.')) return null;
-      l.s += '.';
-    } else {
-      s.tokens.push({ t: 'num', s: '0.' });
-    }
-    return null;
-  }
-
-  function operator(s, o) {
-    if (s.error) return null;
-    if (s.done) {
-      // Continue the chain on top of the last result.
-      s.tokens = [{ t: 'prev', v: lastResult(s) }, { t: 'op', v: o }];
-      s.done = false;
-      return null;
-    }
-    const l = last(s);
-    if (!l) {
-      s.tokens.push({ t: 'num', s: '0' }, { t: 'op', v: o });
-    } else if (l.t === 'op') {
-      l.v = o;
-    } else {
-      if (l.t === 'num') { l.s = l.s.replace(/\.$/, ''); delete l.ins; }
-      s.tokens.push({ t: 'op', v: o });
-    }
-    return null;
-  }
-
-  function equals(s) {
-    if (s.error) return null;
-    if (s.done) {
-      // Repeated "=" repeats the last operation, like iOS (2 + 3 = = → 8).
-      if (!s.lastOp) return null;
-      s.tokens = [{ t: 'prev', v: lastResult(s) }, { t: 'op', v: s.lastOp.op }, { t: 'num', s: s.lastOp.s }];
-      s.done = false;
-    }
-    const toks = trimOps(s.tokens);
-    if (!hasOp(toks)) {
-      if (toks.length === 1 && toks[0].t === 'prev') { s.tokens = []; s.done = true; }
-      else s.tokens = toks;
-      return null;
-    }
-    const result = evaluate(toks);
-    if (!isFinite(result)) {
-      s.error = true; s.tokens = [];
-      return { type: 'error' };
-    }
-    const clean = toks.map(t => {
-      if (t.t !== 'num') return Object.assign({}, t);
-      const n = { t: 'num', s: t.s.replace(/\.$/, '') };
-      if (t.pct) n.pct = true;
-      return n;
-    });
-    s.stages.push({ tokens: clean, result });
-    s.tokens = [];
-    s.done = true;
-    let i = clean.length - 1;
-    while (i >= 0 && clean[i].t !== 'op') i--;
-    const operand = clean[i + 1];
-    s.lastOp = operand && operand.t === 'num' && !operand.pct ? { op: clean[i].v, s: operand.s } : null;
-    if (!s.chainId) s.chainId = newId();
-    return { type: 'stage', chain: { id: s.chainId, stages: JSON.parse(JSON.stringify(s.stages)) } };
-  }
-
-  function percent(s) {
-    if (s.error) return null;
-    if (s.done) {
-      const r = lastResult(s) / 100;
-      startFresh(s);
-      s.tokens = [{ t: 'num', s: rawString(r), ins: true }];
-      return null;
-    }
-    const l = last(s);
-    if (l && l.t === 'num' && !l.pct) { l.s = l.s.replace(/\.$/, ''); l.pct = true; delete l.ins; }
-    return null;
-  }
-
-  function negate(s) {
-    if (s.error) return null;
-    if (s.done) {
-      const r = -lastResult(s);
-      startFresh(s);
-      s.tokens = [{ t: 'num', s: rawString(r), ins: true }];
-      return null;
-    }
-    const l = last(s);
-    if (l && l.t === 'num') l.s = l.s[0] === '-' ? l.s.slice(1) : '-' + l.s;
-    else s.tokens.push({ t: 'num', s: '-0' });
-    return null;
-  }
-
-  function back(s) {
-    if (s.error) { startFresh(s); return null; }
-    if (s.done) return null;
-    const l = last(s);
-    if (!l) return null;
-    if (l.t === 'op' || l.ins) s.tokens.pop();
-    else if (l.pct) delete l.pct;
-    else {
-      const t = l.s.slice(0, -1);
-      if (t === '' || t === '-') s.tokens.pop();
-      else l.s = t;
-    }
-    // Backed out of a continuation ("9 ×" → "9"): show the previous result again.
-    if (s.tokens.length === 1 && s.tokens[0].t === 'prev') { s.tokens = []; s.done = true; }
-    return null;
-  }
-
-  // Returns an event ({type:'stage', chain} when "=" finished a stage) or null.
-  function press(s, key) {
-    if (/^[0-9]$/.test(key)) return digit(s, key);
-    switch (key) {
-      case '.': return dot(s);
-      case '+': case '-': case '*': case '/': return operator(s, key);
-      case '=': return equals(s);
-      case '%': return percent(s);
-      case 'neg': return negate(s);
-      case 'back': return back(s);
-      case 'clear': startFresh(s); return null;
-    }
-    return null;
-  }
-
-  // Put a number (from history, the tape, the pin or a conversion) into the calculation.
-  function insert(s, v) {
-    if (typeof v !== 'number' || !isFinite(v)) return;
-    const tok = { t: 'num', s: rawString(v), ins: true };
-    const l = last(s);
-    if (s.done || s.error || !l) { startFresh(s); s.tokens = [tok]; }
-    else if (l.t === 'op') s.tokens.push(tok);
-    else s.tokens[s.tokens.length - 1] = tok;
-  }
-
-  function renderTokens(tokens, fmt, skipPrev) {
+  // Tokens carry their position in the line (pos) and whether whitespace came before them (sp).
+  function tokenize(str, base) {
     const out = [];
-    for (const t of tokens) {
-      if (t.t === 'prev') { if (!skipPrev) out.push({ k: 'prev', text: fmt.result(t.v) }); }
-      else if (t.t === 'op') out.push({ k: 'op', text: SYMBOL[t.v] });
-      else out.push({ k: 'num', text: fmt.typed(t.s) + (t.pct ? '%' : '') });
+    let sp = false;
+    for (let i = 0; i < str.length;) {
+      const ch = str[i];
+      if (/\s/.test(ch) || ch === '$' || ch === '₹') { sp = true; i++; continue; }
+      const pos = base + i;
+      if (/[0-9.,]/.test(ch)) {
+        let j = i;
+        while (j < str.length && /[0-9.,]/.test(str[j])) j++;
+        const digits = str.slice(i, j).replace(/,/g, '');
+        out.push(/^(\d+\.?\d*|\.\d+)$/.test(digits) ? { t: 'num', v: parseFloat(digits), pos, sp } : { t: 'bad', pos, sp });
+        i = j;
+      } else {
+        if (ch === '+') out.push({ t: 'op', v: '+', pos, sp });
+        else if (ch === '-' || ch === '−' || ch === '–') out.push({ t: 'op', v: '-', pos, sp });
+        else if (ch === '*' || ch === '×') out.push({ t: 'op', v: '*', pos, sp });
+        else if (ch === '/' || ch === '÷') out.push({ t: 'op', v: '/', pos, sp });
+        else if (ch === '%' || ch === '(' || ch === ')') out.push({ t: ch, pos, sp });
+        else out.push({ t: 'bad', pos, sp });
+        i++;
+      }
+      sp = false;
     }
     return out;
   }
 
-  function view(s, fmt) {
-    let big, value, isResult = false;
-    if (s.error) { big = [{ k: 'error', text: 'Error' }]; value = null; }
-    else if (s.done) { value = lastResult(s); big = [{ k: 'result', text: fmt.result(value) }]; isResult = true; }
-    else if (!s.tokens.length) { big = [{ k: 'num', text: '0' }]; value = 0; }
-    else {
-      big = renderTokens(s.tokens, fmt, false);
-      value = evaluate(s.tokens);
-      if (value === null || !isFinite(value)) value = null;
+  // × and ÷ before + and −; a missing ")" at the end is fine; "2(3+4)" multiplies.
+  // Percent follows iOS: "a + b%" = a + a×b/100, "a × b%" = a × b/100.
+  function parse(tokens) {
+    let p = 0;
+    const isOp = (t, ...ops) => t && t.t === 'op' && ops.includes(t.v);
+
+    function primary() {
+      const t = tokens[p];
+      if (!t) throw 0;
+      if (t.t === 'num') { p++; return t.v; }
+      if (t.t === '(') {
+        p++;
+        const v = add();
+        if (tokens[p] && tokens[p].t === ')') p++;
+        else if (p < tokens.length) throw 0;
+        return v;
+      }
+      throw 0;
     }
-    return {
-      tape: s.stages,
-      big,
-      value,
-      isResult,
-      acLabel: !s.tokens.length || s.done || s.error ? 'AC' : 'back',
-    };
+    function postfix() {
+      let v = primary(), pct = false;
+      while (tokens[p] && tokens[p].t === '%') { p++; v /= 100; pct = true; }
+      return { v, pct };
+    }
+    function unary() {
+      const t = tokens[p];
+      if (isOp(t, '+', '-')) {
+        p++;
+        const r = unary();
+        return { v: t.v === '-' ? -r.v : r.v, pct: r.pct };
+      }
+      return postfix();
+    }
+    function mul() {
+      const first = unary();
+      let v = first.v, n = 1;
+      for (;;) {
+        const t = tokens[p];
+        if (isOp(t, '*', '/')) { p++; const r = unary(); v = t.v === '*' ? v * r.v : v / r.v; n++; }
+        else if (t && t.t === '(' && !t.sp) { v *= unary().v; n++; }
+        else break;
+      }
+      return { v, pctOnly: n === 1 && first.pct };
+    }
+    function add() {
+      let v = mul().v;
+      while (isOp(tokens[p], '+', '-')) {
+        const op = tokens[p++].v;
+        const r = mul();
+        const rv = r.pctOnly ? v * r.v : r.v;
+        v = op === '+' ? v + rv : v - rv;
+      }
+      return v;
+    }
+
+    try {
+      const v = add();
+      return p === tokens.length ? v : null;
+    } catch (e) {
+      return null;
+    }
   }
 
-  function validToken(t) {
-    if (!t || typeof t !== 'object') return false;
-    if (t.t === 'num') return typeof t.s === 'string' && !isNaN(parseFloat(t.s));
-    if (t.t === 'op') return t.v in SYMBOL;
-    if (t.t === 'prev') return typeof t.v === 'number';
-    return false;
+  const canStart = t => t.t === 'num' || t.t === '(' || (t.t === 'op' && (t.v === '+' || t.v === '-'));
+
+  function evaluate(str) {
+    return parse(tokenize(str, 0));
   }
 
-  const validStage = st => st && Array.isArray(st.tokens) && st.tokens.every(validToken) && typeof st.result === 'number';
-
-  // Rebuild saved state defensively — anything malformed falls back to a blank calculator.
-  function restore(o) {
-    const s = blank();
-    if (!o || typeof o !== 'object') return s;
-    if (Array.isArray(o.stages) && o.stages.every(validStage)) s.stages = o.stages;
-    if (Array.isArray(o.tokens) && o.tokens.every(validToken)) s.tokens = o.tokens;
-    if (s.tokens.length && s.tokens[0].t === 'prev' && !s.stages.length) s.tokens = [];
-    s.done = !!o.done && s.stages.length > 0;
-    if (s.done) s.tokens = [];
-    s.error = !!o.error;
-    s.chainId = typeof o.chainId === 'string' ? o.chainId : null;
-    if (o.lastOp && o.lastOp.op in SYMBOL && typeof o.lastOp.s === 'string') s.lastOp = o.lastOp;
-    return s;
+  // → null, or { value, exprStart, exprEnd, eqIndex, conv: null | 'USD>INR' | 'INR>USD' }
+  function analyzeLine(line) {
+    const eq = /=\s*$/.exec(line);
+    if (!eq) return null;
+    let body = line.slice(0, eq.index);
+    let conv = null;
+    const c = CONV_AT_END.exec(body);
+    if (c) {
+      conv = c[1] === '$→₹' ? 'USD>INR' : 'INR>USD';
+      body = body.slice(0, c.index);
+    }
+    let s = body.length;
+    while (s > 0 && MATH_CHAR.test(body[s - 1])) s--;
+    const tokens = tokenize(body.slice(s), s);
+    for (let i = 0; i < tokens.length; i++) {
+      if (!canStart(tokens[i])) continue;
+      const value = parse(tokens.slice(i));
+      if (value !== null) return { value, exprStart: tokens[i].pos, exprEnd: body.length, eqIndex: eq.index, conv };
+    }
+    return null;
   }
 
-  // Number formatting in the device's locale (grouping, decimal mark). Minus is the true "−".
+  // An operator pressed right after an answer continues the same line, adding brackets only when
+  // needed: "50+25+60=" then × → "(50+25+60)×". Returns null for lines that can't continue.
+  function continueLine(line, sym) {
+    const a = analyzeLine(line);
+    if (!a || a.conv) return null;
+    let expr = line.slice(a.exprStart, a.exprEnd).replace(/\s+$/, '');
+    let depth = 0, topAddSub = false, prev = null;
+    for (const t of tokenize(expr, 0)) {
+      if (t.t === '(') depth++;
+      else if (t.t === ')') depth = Math.max(0, depth - 1);
+      else if (t.t === 'op' && (t.v === '+' || t.v === '-') && depth === 0 && prev && (prev.t === 'num' || prev.t === ')' || prev.t === '%')) topAddSub = true;
+      prev = t;
+    }
+    expr += ')'.repeat(depth);
+    const wrap = topAddSub && (sym === '×' || sym === '÷');
+    return line.slice(0, a.exprStart) + (wrap ? '(' + expr + ')' : expr) + sym;
+  }
+
+  // Version 1 kept a history of chained calculations; turn each into one line of the page.
+  function migrateV1(history) {
+    const tokText = t => (t.t === 'num' ? t.s.replace(/^-/, '−') + (t.pct ? '%' : '') : t.t === 'op' ? SYMBOL[t.v] : '');
+    const out = [];
+    for (const e of history.slice().sort((a, b) => a.ts - b.ts)) {
+      try {
+        if (e.type === 'fx' && typeof e.amount === 'number') {
+          out.push(rawString(e.amount) + ' ' + (e.from === 'INR' ? '₹→$' : '$→₹') + '=');
+          continue;
+        }
+        if (!Array.isArray(e.stages) || !e.stages.length) continue;
+        let expr = e.stages[0].tokens.map(tokText).join('');
+        for (const st of e.stages.slice(1)) {
+          const op = st.tokens[1];
+          if (!op || op.t !== 'op') continue;
+          const cont = continueLine(expr + '=', SYMBOL[op.v]);
+          expr = (cont != null ? cont : expr + SYMBOL[op.v]) + st.tokens.slice(2).map(tokText).join('');
+        }
+        out.push(expr + '=');
+      } catch (err) {
+        // skip anything malformed
+      }
+    }
+    return out;
+  }
+
+  // Answers in the device's locale (grouping, decimal mark), with a true minus sign.
   function makeFormatter(locale) {
-    const intFmt = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
     const resFmt = new Intl.NumberFormat(locale, { maximumSignificantDigits: 14 });
     const decPart = new Intl.NumberFormat(locale).formatToParts(1.5).find(p => p.type === 'decimal');
     const dec = decPart ? decPart.value : '.';
-
     function result(n) {
       if (n == null || !isFinite(n)) return 'Error';
       const r = Number(n.toPrecision(14));
@@ -292,21 +198,10 @@
       }
       return resFmt.format(r).replace('-', '−');
     }
-
-    function typed(str) {
-      if (/e/i.test(str)) return result(parseFloat(str));
-      const neg = str[0] === '-';
-      const body = neg ? str.slice(1) : str;
-      const [i, f] = body.split('.');
-      let out = intFmt.format(BigInt(i || '0'));
-      if (body.includes('.')) out += dec + (f || '');
-      return (neg ? '−' : '') + out;
-    }
-
-    return { result, typed, decimal: dec };
+    return { result, decimal: dec };
   }
 
-  const api = { blank, press, insert, view, evaluate, renderTokens, restore, validStage, makeFormatter, rawString, newId, SYMBOL };
+  const api = { SYMBOL, tokenize, parse, evaluate, analyzeLine, continueLine, migrateV1, makeFormatter, rawString };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.CalcEngine = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
