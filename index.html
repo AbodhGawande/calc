@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Calc">
+<meta name="theme-color" content="#000000">
+<meta name="format-detection" content="telephone=no">
+<title>Calc</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main id="app">
+  <div class="topbar">
+    <button id="historyBtn" class="icon-btn" aria-label="History">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor" stroke="none"/></svg>
+      <span id="backupDot" class="dot" hidden></span>
+    </button>
+  </div>
+
+  <section class="display">
+    <div id="screen" class="screen">
+      <div id="tape" class="tape"></div>
+      <div id="big" class="big">0</div>
+    </div>
+    <div id="fx" class="fx" hidden>
+      <div class="fx-row">
+        <button id="fxPair" class="fx-pair" aria-label="Swap currencies"></button>
+        <button id="fxAmount" class="fx-amount" aria-label="Use converted amount">—</button>
+      </div>
+      <button id="fxStatus" class="fx-status" aria-label="Refresh rate"></button>
+    </div>
+  </section>
+
+  <div class="aux">
+    <button id="pinChip" class="pin-chip" hidden>
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 2h8l-1.4 6.2L18 12H6l3.4-3.8z"/><path d="M11.2 12h1.6v9l-.8 1.5-.8-1.5z"/></svg>
+      <span class="pin-val"></span>
+    </button>
+  </div>
+
+  <section id="keypad" class="keypad">
+    <button class="key fn" data-key="ac" id="acKey" aria-label="All clear">
+      <span class="lbl-ac">AC</span>
+      <svg class="lbl-back" viewBox="0 0 28 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 4.5h14a2.5 2.5 0 0 1 2.5 2.5v10a2.5 2.5 0 0 1-2.5 2.5h-14L2.5 12z"/><path d="M13.8 8.8l6.4 6.4M20.2 8.8l-6.4 6.4"/></svg>
+    </button>
+    <button class="key fn" data-key="neg" aria-label="Plus minus">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3.5 7.5h7M7 4v7M16.5 3.5 7.5 20.5M13.5 17h7"/></svg>
+    </button>
+    <button class="key fn" data-key="%">%</button>
+    <button class="key op" data-key="/">÷</button>
+    <button class="key" data-key="7">7</button>
+    <button class="key" data-key="8">8</button>
+    <button class="key" data-key="9">9</button>
+    <button class="key op" data-key="*">×</button>
+    <button class="key" data-key="4">4</button>
+    <button class="key" data-key="5">5</button>
+    <button class="key" data-key="6">6</button>
+    <button class="key op" data-key="-">−</button>
+    <button class="key" data-key="1">1</button>
+    <button class="key" data-key="2">2</button>
+    <button class="key" data-key="3">3</button>
+    <button class="key op" data-key="+">+</button>
+    <button class="key fxkey" data-key="fx" id="fxKey" aria-label="Currency conversion">$₹</button>
+    <button class="key" data-key="0">0</button>
+    <button class="key" data-key="." id="dotKey">.</button>
+    <button class="key op" data-key="=">=</button>
+  </section>
+</main>
+
+<div id="sheet" class="sheet" aria-hidden="true" inert>
+  <div class="sheet-head"><span></span><h2>History</h2><button id="sheetDone" class="done">Done</button></div>
+  <p id="backupLine" class="backup"></p>
+  <p class="hint">Tap a result to reuse it · hold a result to pin it · hold an entry to delete it</p>
+  <div id="hlist" class="hlist"></div>
+  <div class="sheet-foot">
+    <button id="exportBtn">Export</button>
+    <button id="importBtn">Import</button>
+    <button id="clearBtn" class="danger">Clear</button>
+  </div>
+  <input id="importFile" type="file" accept=".json,.txt,application/json,text/plain" hidden>
+</div>
+
+<div id="toast" class="toast" role="status"></div>
+
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
