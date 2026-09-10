@@ -25,6 +25,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 7l4-4 4 4M8 11H6v10h12V11h-2"/></svg>
       <span id="backupDot" class="dot" hidden></span>
     </button>
+    <button id="helpBtn" class="tb-btn help-btn" aria-label="Help">?</button>
     <span class="spacer"></span>
     <button id="undoBtn" class="tb-btn off" aria-label="Undo">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
@@ -34,13 +35,17 @@
     </button>
   </div>
 
-  <div class="page">
+  <div id="scroller" class="page">
     <div id="note" class="note" contenteditable="true" inputmode="none" autocorrect="off" autocapitalize="off" spellcheck="false" role="textbox" aria-multiline="true" aria-label="Calculation page"></div>
+    <div id="answers" class="answers"></div>
     <div id="placeholder" class="placeholder">Type a calculation and press =</div>
   </div>
 
   <button id="fxBar" class="fxbar" hidden></button>
-  <div id="vars" class="vars" aria-label="Names" hidden></div>
+  <div id="vars" class="vars" aria-label="Names">
+    <button id="nameChip" class="chip name-chip">→ Name</button>
+    <span id="varChips" class="var-chips"></span>
+  </div>
 
   <section id="keypad" class="keypad">
     <button class="key fn" data-key="abc">ABC</button>
@@ -73,6 +78,48 @@
     <button class="key op" data-key="=">=</button>
   </section>
 </main>
+
+<!-- Tap an answer: Use / Name / Copy -->
+<div id="menu" class="menu" role="menu" hidden>
+  <button data-act="use" role="menuitem">Use</button>
+  <button data-act="name" role="menuitem">Name</button>
+  <button data-act="copy" role="menuitem">Copy</button>
+</div>
+
+<!-- Name box -->
+<div id="nameBox" class="namebox" hidden>
+  <div class="nb-card">
+    <div class="nb-label">Name this number</div>
+    <div id="nbValue" class="nb-value"></div>
+    <input id="nbInput" class="nb-input" type="text" placeholder="e.g. rent" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="done" maxlength="24">
+    <p id="nbError" class="nb-error" hidden>Use one word that starts with a letter, like rent or rent2.</p>
+    <div class="nb-actions">
+      <button id="nbRemove" class="nb-remove">Remove name</button>
+      <span class="grow"></span>
+      <button id="nbCancel" class="nb-cancel">Cancel</button>
+      <button id="nbSave" class="nb-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Help -->
+<div id="help" class="help" aria-hidden="true" inert>
+  <div class="help-head"><h2>How to use Calc</h2><button id="helpDone" class="done">Done</button></div>
+  <div class="help-body">
+    <div class="h-item"><span class="h-ico">=</span><div><b>Calculate</b>Type a sum and press =. The answer shows on the right in orange.</div></div>
+    <div class="h-item"><span class="h-ico">✎</span><div><b>Edit anything</b>Tap any number to put the cursor there and change it. Answers update straight away.</div></div>
+    <div class="h-item"><span class="h-ico">( )</span><div><b>Brackets</b>Add them anywhere. A missing ) is added for you.</div></div>
+    <div class="h-item"><span class="h-ico">↵</span><div><b>Keep going</b>After an answer, a number starts a new line. + − × ÷ carries on with the same line.</div></div>
+    <div class="h-item"><span class="h-ico o">700</span><div><b>Reuse an answer</b>Tap an orange answer: <i>Use</i> puts it on your line, <i>Copy</i> copies it.</div></div>
+    <div class="h-item"><span class="h-ico o">→</span><div><b>Name a number</b>Tap <i>→ Name</i> above the keypad (or an answer's <i>Name</i>) and type a name, like <span class="h-name">rent</span>. The line reads <span class="h-ex">500+200 → <span class="h-name">rent</span></span>.</div></div>
+    <div class="h-item"><span class="h-ico b">rent</span><div><b>Use a name</b>Tap its blue chip above the keypad, then carry on: <span class="h-ex"><span class="h-name">rent</span>×12=</span>. Change the original line and everything below updates.</div></div>
+    <div class="h-item"><span class="h-ico">$₹</span><div><b>Dollars ⇄ rupees</b>Press $₹ to convert the line. Press it again to flip the direction.</div></div>
+    <div class="h-item"><span class="h-ico">ABC</span><div><b>Words</b>ABC opens the iPhone keyboard for notes like “Hotel”. The orange calculator button brings the keypad back.</div></div>
+    <div class="h-item"><span class="h-ico g">?</span><div><b>A grey ?</b>That line can't be worked out. Check the brackets, and that its names are set on a line above.</div></div>
+    <div class="h-item"><span class="h-ico">↶</span><div><b>Undo and clear</b>↶ undoes. The bin clears the page; ↶ brings it back until you close the app.</div></div>
+    <div class="h-item"><span class="h-ico">⤴︎</span><div><b>Back up</b>The share button saves a copy to Files. Do it now and then: iPhone can clear app data.</div></div>
+  </div>
+</div>
 
 <div id="sheet" class="sheet" aria-hidden="true" inert>
   <div class="sheet-card">

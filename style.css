@@ -53,11 +53,9 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .dot { position: absolute; top: 3px; right: 3px; width: 10px; height: 10px; border-radius: 50%; background: #ff453a; border: 2px solid #000; }
 
 /* ---------- the page ---------- */
-.page { position: relative; flex: 1 1 auto; min-height: 0; display: flex; }
+.page { position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .note {
-  flex: 1;
-  min-width: 0;
-  overflow-y: auto;
+  min-height: 100%;
   padding: 4px 20px 28px;
   font-size: 22px;
   line-height: 1.5;
@@ -71,10 +69,30 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   touch-action: manipulation;
 }
 .ln { min-height: 1.5em; }
-.eq[data-r]::after { content: attr(data-r); color: var(--op); margin-left: 0.12em; }
 /* names stand out from numbers: blue and bolder, both where they're set and where they're used */
 .v, .def { color: var(--name); font-weight: 600; }
-.def::before { content: '→\2009'; color: var(--dim); font-weight: 400; margin-left: 0.3em; }
+.arrow { color: var(--dim); }
+
+/* answers sit in a column on the right, outside the editable text, so the cursor never lands beside one */
+.answers { position: absolute; top: 0; left: 0; right: 0; height: 0; pointer-events: none; }
+.ans {
+  position: absolute;
+  right: 14px;
+  max-width: 55%;
+  height: 33px;
+  padding: 0 8px;
+  border-radius: 9px;
+  background: rgba(255, 159, 10, 0.14);
+  color: var(--op);
+  font-size: 22px;
+  line-height: 33px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: auto;
+}
+.ans.active { background: rgba(255, 159, 10, 0.32); }
+.ans.dim { background: #1c1c1e; color: #636366; }
 
 .vars { flex: none; display: flex; gap: 8px; overflow-x: auto; padding: 2px 14px 4px; scrollbar-width: none; touch-action: pan-x; }
 .vars::-webkit-scrollbar { display: none; }
@@ -82,6 +100,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .chip { flex: none; display: inline-flex; align-items: baseline; gap: 6px; height: 34px; padding: 0 13px; border-radius: 17px; background: #1c1c1e; font-size: 16px; line-height: 34px; white-space: nowrap; }
 .chip-name { color: var(--name); font-weight: 600; }
 .chip-val { color: var(--dim); font-size: 14px; }
+.var-chips { display: contents; }
+.name-chip { color: var(--op); font-weight: 600; }
 .placeholder { position: absolute; top: 4px; left: 20px; font-size: 22px; line-height: 1.5; color: #48484a; pointer-events: none; }
 
 .fxbar { flex: none; align-self: flex-end; margin: 0 18px 2px; padding: 4px 0; font-size: 12px; color: var(--dim); }
@@ -159,7 +179,10 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   border-radius: 999px;
   background: rgba(58, 58, 60, 0.96);
   font-size: 15px;
-  white-space: nowrap;
+  line-height: 1.35;
+  width: max-content;
+  max-width: calc(100vw - 40px);
+  text-align: center;
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, 8px);
@@ -167,3 +190,96 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 .textmode ~ .toast { bottom: auto; top: calc(env(safe-area-inset-top) + 62px); }
+
+.help-btn { font-size: 21px; font-weight: 600; }
+
+/* ---------- answer menu ---------- */
+.menu {
+  position: fixed;
+  z-index: 15;
+  display: flex;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #3a3a3c;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+}
+.menu button { padding: 11px 17px; font-size: 16px; color: var(--text); }
+.menu button + button { border-left: 0.5px solid #545458; }
+.menu button:active { background: #4a4a4e; }
+
+/* ---------- name box (sits at the top, clear of the iPhone keyboard) ---------- */
+.namebox { position: fixed; inset: 0; z-index: 12; background: rgba(0, 0, 0, 0.55); }
+.nb-card {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 64px);
+  left: 14px;
+  right: 14px;
+  max-width: 492px;
+  margin: 0 auto;
+  padding: 16px;
+  border-radius: 16px;
+  background: #1c1c1e;
+}
+.nb-label { font-size: 13px; color: var(--dim); }
+.nb-value { margin: 2px 0 12px; font-size: 30px; color: var(--op); overflow-wrap: anywhere; }
+.nb-input {
+  width: 100%;
+  height: 46px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  outline: none;
+  background: #2c2c2e;
+  color: var(--name);
+  font: 600 19px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  caret-color: var(--op);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.nb-input::placeholder { color: #636366; font-weight: 400; }
+.nb-error { margin-top: 8px; font-size: 13px; color: #ff453a; }
+.nb-actions { display: flex; align-items: center; gap: 6px; margin-top: 14px; }
+.nb-actions .grow { flex: 1; }
+.nb-actions button { height: 40px; padding: 0 14px; border-radius: 10px; font-size: 16px; }
+.nb-remove { color: #ff453a; padding-left: 0 !important; }
+.nb-cancel { color: var(--dim); }
+.nb-save { background: var(--op); color: #000; font-weight: 600; }
+
+/* ---------- help ---------- */
+.help {
+  position: fixed;
+  inset: calc(env(safe-area-inset-top) + 8px) 0 0 0;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px 16px 0 0;
+  background: #1c1c1e;
+  transform: translateY(105%);
+  visibility: hidden;
+  transition: transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 0.32s;
+}
+.help.open { transform: none; visibility: visible; transition: transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.help-head { flex: none; display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 20px; }
+.help-head h2 { font-size: 17px; font-weight: 600; }
+.help-body { flex: 1; overflow-y: auto; padding: 0 20px calc(env(safe-area-inset-bottom) + 24px); }
+.h-item { display: flex; gap: 14px; align-items: flex-start; padding: 12px 0; border-bottom: 0.5px solid var(--line); font-size: 15px; line-height: 1.4; color: #d1d1d6; }
+.h-item b { display: block; margin-bottom: 1px; font-size: 16px; font-weight: 600; color: var(--text); }
+.h-item i { font-style: normal; color: var(--op); }
+.h-ico {
+  flex: none;
+  min-width: 44px;
+  height: 32px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: #3a3a3c;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 32px;
+  text-align: center;
+  color: var(--text);
+}
+.h-ico.o { background: rgba(255, 159, 10, 0.16); color: var(--op); }
+.h-ico.b { background: rgba(100, 210, 255, 0.14); color: var(--name); }
+.h-ico.g { background: #2c2c2e; color: #636366; }
+.h-name { color: var(--name); font-weight: 600; }
+.h-ex { white-space: nowrap; color: var(--text); }

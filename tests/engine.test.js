@@ -110,6 +110,41 @@ test('continuing a line that uses names', () => {
   assert.equal(E.continueLine('5=x', '×'), null);
 });
 
+test('arrow names', () => {
+  assert.deepEqual(E.defOf('500+200 → rent'), { name: 'rent', start: 10, end: 14, eq: 8 });
+  assert.equal(E.defOf('100 $→₹='), null); // the currency token is not a name
+  const p = E.evaluatePage(['500+200 → rent', 'rent×2=', '200 → var', 'var+1=']);
+  assert.deepEqual(values(p), [700, 1400, 200, 201]);
+  assert.equal(p.lines[2].a.simple, true);   // a plain number needs no answer shown
+  assert.equal(p.lines[0].a.simple, false);
+  assert.equal(E.evaluatePage(['100 $→₹ → inr'], v => v * 95).lines[0].value, 9500);
+});
+
+test('naming a line from the name box', () => {
+  assert.equal(E.nameLine('500+200=', 'rent'), '500+200 → rent');
+  assert.equal(E.nameLine('200', 'var'), '200 → var');
+  assert.equal(E.nameLine('500+200 → rent', 'house'), '500+200 → house');
+  assert.equal(E.nameLine('500+200 → rent', ''), '500+200=');
+  assert.equal(E.nameLine('200 → var', ''), '200');
+  assert.equal(E.nameLine('200=var', 'x'), '200 → x');
+  assert.equal(E.nameLine('100 $→₹=', 'inr'), '100 $→₹ → inr');
+  assert.equal(E.modernizeNames('200=var\n5+5=\nTea 5+5=ok'), '200 → var\n5+5=\nTea 5+5 → ok');
+  assert.equal(E.openValue('200').value, 200);
+  assert.equal(E.openValue('50+25').value, 75);
+  assert.equal(E.openValue('words'), null);
+  assert.ok(E.isValidName('rent2'));
+  assert.ok(E.isValidName('house_rent'));
+  assert.ok(!E.isValidName('2rent'));
+  assert.ok(!E.isValidName('house rent'));
+});
+
+test('lines that ask for an answer but have none are flagged', () => {
+  const p = E.evaluatePage(['varr=', 'words', '5+5=', 'oops → x']);
+  assert.deepEqual(p.lines.map(l => l.wantsAnswer), [true, false, true, true]);
+  assert.equal(p.lines[0].a, null);
+  assert.equal(p.lines[3].def, null);
+});
+
 test('version 1 history becomes lines', () => {
   const history = [
     { id: 'b', ts: 2, type: 'fx', from: 'USD', to: 'INR', amount: 55, result: 5249.2, rate: 95.44 },

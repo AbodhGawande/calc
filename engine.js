@@ -4,7 +4,8 @@
    A line is calculated when it ends with "=". Words are allowed: the calculation is the
    longest run of maths at the end of the line, so "Hotel 3 nights (120+95)×2 =" works out (120+95)×2.
    A currency token just before "=" ("$→₹" or "₹→$") makes the line a conversion.
-   A word after the "=" names the answer ("50+50=rent"); lines below can use the name ("rent×12="). */
+   "→ name" at the end names the line's value ("500+200 → rent", "200 → var"); lines below can use the name.
+   The older "500+200=rent" form still works. */
 (function (root) {
   'use strict';
 
@@ -13,7 +14,9 @@
   const WORD_START = /[\p{L}_]/u;
   const WORD_CHAR = /[\p{L}\p{N}_]/u;
   const NAME_G = /[\p{L}_][\p{L}\p{N}_]*/gu;
-  const DEF_RE = /=\s*([\p{L}_][\p{L}\p{N}_]*)\s*$/u;
+  const NAME_ONLY = /^[\p{L}_][\p{L}\p{N}_]*$/u;
+  const DEF_RE = /(?:=|→)\s*([\p{L}_][\p{L}\p{N}_]*)\s*$/u;
+  const OLD_DEF = /\s*=\s*([\p{L}_][\p{L}\p{N}_]*)\s*$/u;
 
   // Plain-digit string for a computed value, e.g. 0.30000000000000004 -> "0.3".
   function rawString(v) {
@@ -22,6 +25,8 @@
     if (/e-/.test(str)) str = r.toFixed(20).replace(/\.?0+$/, '');
     return str;
   }
+
+  const isValidName = s => NAME_ONLY.test(s);
 
   // Tokens carry their position in the line (pos) and whether whitespace came before them (sp).
   // A word that is a known name becomes a number; any other word is a label ('bad').
@@ -127,7 +132,7 @@
     return parse(tokenize(str, 0, vars));
   }
 
-  // "…=name" at the end of a line → { name, start, end, eq }
+  // "… → name" (or the older "…=name") at the end of a line → { name, start, end, eq } (eq = index of → or =)
   function defOf(line) {
     const m = DEF_RE.exec(line);
     if (!m) return null;
@@ -135,7 +140,8 @@
     return { name: m[1], start, end: start + m[1].length, eq: m.index };
   }
 
-  // → null, or { value, exprStart, exprEnd, eqIndex, conv: null | 'USD>INR' | 'INR>USD', def }
+  // → null, or { value, exprStart, exprEnd, eqIndex, conv: null | 'USD>INR' | 'INR>USD', def, simple }
+  // simple = the calculation is just one plain number (it needs no answer shown).
   function analyzeLine(line, vars) {
     const def = defOf(line);
     let eqIndex;
@@ -161,10 +167,33 @@
       const prev = tokens[i - 1], cur = tokens[i];
       if (prev && (prev.t === 'op' || prev.t === '(' || (prev.word && !cur.sp))) continue;
       if (prev && cur.t === 'op' && (prev.t === 'num' || prev.t === ')' || prev.t === '%')) continue;
-      const value = parse(tokens.slice(i));
-      if (value !== null) return { value, exprStart: tokens[i].pos, exprEnd: body.length, eqIndex, conv, def };
+      const used = tokens.slice(i);
+      const value = parse(used);
+      if (value !== null) {
+        const simple = !conv && used.length === 1 && used[0].t === 'num' && !used[0].isVar;
+        return { value, exprStart: tokens[i].pos, exprEnd: body.length, eqIndex, conv, def, simple };
+      }
     }
     return null;
+  }
+
+  // The value a line would have if it were finished — lets "200" or "50+25" be named without typing "=".
+  function openValue(line, vars) {
+    if (/=\s*$/.test(line) || defOf(line)) return analyzeLine(line, vars);
+    return analyzeLine(line.replace(/\s+$/, '') + '=', vars);
+  }
+
+  // Give a line a name (or take it away with name = ''): "500+200=" + rent → "500+200 → rent".
+  function nameLine(line, name) {
+    const def = defOf(line);
+    const head = (def ? line.slice(0, def.eq) : line.replace(/\s*=\s*$/, '')).replace(/\s+$/, '');
+    if (name) return head + ' → ' + name;
+    return /^[\d.,]+$/.test(head.trim()) ? head : head + '='; // a plain number goes back to just the number
+  }
+
+  // Version 3 wrote names as "200=var"; show them the new way ("200 → var").
+  function modernizeNames(text) {
+    return text.split('\n').map(l => l.replace(OLD_DEF, ' → $1')).join('\n');
   }
 
   // Works down the page: each line can use names set on lines above it; setting a name again takes over below.
@@ -176,15 +205,16 @@
       const a = analyzeLine(line, vars);
       let value = a ? a.value : null;
       if (a && a.conv && value !== null && isFinite(value)) value = convert ? convert(value, a.conv) : null;
-      const def = defOf(line);
+      const defSyntax = defOf(line);
       const names = []; // [start, end] of known names used on this line
       for (const m of line.matchAll(NAME_G)) {
-        if (def && m.index === def.start) continue;
+        if (defSyntax && m.index === defSyntax.start) continue;
         if (vars.has(m[0].toLowerCase())) names.push([m.index, m.index + m[0].length]);
       }
-      const defined = a && def && value !== null && isFinite(value) ? def : null;
-      if (defined) vars.set(def.name.toLowerCase(), { name: def.name, value });
-      out.push({ a, value, def: defined, names });
+      const defined = a && defSyntax && value !== null && isFinite(value) ? defSyntax : null;
+      if (defined) vars.set(defSyntax.name.toLowerCase(), { name: defSyntax.name, value });
+      const wantsAnswer = /=\s*$/.test(line) || !!defSyntax;
+      out.push({ a, value, def: defined, defSyntax, names, wantsAnswer });
     }
     return { lines: out, vars };
   }
@@ -252,7 +282,10 @@
     return { result, decimal: dec };
   }
 
-  const api = { SYMBOL, tokenize, parse, evaluate, defOf, analyzeLine, evaluatePage, continueLine, migrateV1, makeFormatter, rawString };
+  const api = {
+    SYMBOL, tokenize, parse, evaluate, defOf, analyzeLine, openValue, nameLine, modernizeNames, isValidName,
+    evaluatePage, continueLine, migrateV1, makeFormatter, rawString,
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.CalcEngine = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

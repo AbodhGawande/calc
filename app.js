@@ -1,8 +1,8 @@
-/* Calc — the note page: editor, keypad, names, currency, backup. All maths lives in engine.js.
+/* Calc — the note page: editor, keypad, answers, names, currency, backup, help. All maths lives in engine.js.
 
    The page is plain text (lines joined by "\n"). The editor shows one <div class="ln"> per line, split into
-   plain text and styled pieces: names (blue), the "=" whose answer CSS draws after it (::after from data-r),
-   and a name being set. Answers are never part of the text. */
+   plain text and styled pieces (names in blue, the → of a named line). Answers are NOT in the editor: they are
+   tags in a separate layer, lined up on the right of each line, so the cursor can never sit beside one. */
 (function () {
   'use strict';
 
@@ -12,6 +12,7 @@
   const OPS = '+−×÷-*/';
   const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
   const CONV = /\$→₹|₹→\$/;
+  const HELP_VERSION = 4; // bump to show the help page once after an update that changes how things work
 
   // ---------- storage ----------
   // localStorage is the only store. iOS may wipe it, so Backup ▸ Export is the safety net.
@@ -25,27 +26,31 @@
 
   const $ = id => document.getElementById(id);
   const els = {
-    app: $('app'), note: $('note'), placeholder: $('placeholder'), keypad: $('keypad'), fxBar: $('fxBar'), vars: $('vars'),
-    undo: $('undoBtn'), dot: $('backupDot'), sheet: $('sheet'), backupLine: $('backupLine'), diag: $('diag'),
-    file: $('importFile'), toast: $('toast'),
+    app: $('app'), scroller: $('scroller'), note: $('note'), answers: $('answers'), placeholder: $('placeholder'),
+    keypad: $('keypad'), fxBar: $('fxBar'), vars: $('vars'), varChips: $('varChips'), menu: $('menu'),
+    nameBox: $('nameBox'), nbValue: $('nbValue'), nbInput: $('nbInput'), nbError: $('nbError'), nbRemove: $('nbRemove'),
+    help: $('help'), undo: $('undoBtn'), dot: $('backupDot'), sheet: $('sheet'), backupLine: $('backupLine'),
+    diag: $('diag'), file: $('importFile'), toast: $('toast'),
   };
 
   // ---------- state ----------
   const saved = load(K.note, null);
   let text = saved && typeof saved.text === 'string' ? saved.text : '';
   let updatedAt = (saved && saved.updatedAt) || 0;
-  let migrated = false;
+  let notice = '';
   if (!saved) {
     // First launch after the update from version 1: move the old history onto the page.
     const v1 = load(K.v1, null);
     if (Array.isArray(v1) && v1.length) {
       text = E.migrateV1(v1).join('\n');
       updatedAt = Date.now();
-      migrated = !!text;
+      if (text) notice = 'Your earlier calculations are on the page';
     }
   }
+  const modern = E.modernizeNames(text); // "200=var" (version 3) → "200 → var"
+  if (modern !== text) { text = modern; updatedAt = Date.now(); notice = notice || 'Names now show as → name'; }
   let sel = saved && Array.isArray(saved.sel) ? saved.sel.map(n => Math.max(0, Math.min(text.length, n | 0))) : [text.length, text.length];
-  const settings = Object.assign({ conv: '$→₹' }, load(K.settings, {}));
+  const settings = Object.assign({ conv: '$→₹', helpSeen: 0 }, load(K.settings, {}));
   let fx = load(K.fx, null);
   let backup = load(K.backup, null);
   let fxBusy = false;
@@ -91,19 +96,12 @@
     return lines.join('\n');
   }
 
-  function answerText(info) {
-    const a = info.a;
-    if (!a) return null;
-    if (!isFinite(a.value)) return 'Error';
-    if (a.conv) return info.value == null ? '—' : money(info.value, a.conv.split('>')[1]);
-    return fmt.result(info.value);
-  }
-
-  // Split a line into plain text and styled pieces: 'v' = a name in use, 'eq' = the "=" that shows the answer,
+  // Split a line into plain text and styled pieces: 'v' = a name in use, 'arrow' = the → of a named line,
   // 'def' = the name this line sets.
-  function segmentsFor(line, info, ans) {
+  function segmentsFor(line, info) {
     const marks = info.names.map(([s, e]) => [s, e, 'v']);
-    if (ans != null) marks.push([info.a.eqIndex, info.a.eqIndex + 1, 'eq']);
+    const d = info.defSyntax;
+    if (d && line[d.eq] === '→') marks.push([d.eq, d.eq + 1, 'arrow']);
     if (info.def) marks.push([info.def.start, info.def.end, 'def']);
     marks.sort((x, y) => x[0] - y[0]);
     const segs = [];
@@ -153,19 +151,117 @@
       let div = note.childNodes[i];
       if (!div) { div = document.createElement('div'); note.appendChild(div); }
       if (div.className !== 'ln') div.className = 'ln';
-      const info = page.lines[i], ans = answerText(info);
-      const segs = segmentsFor(line, info, ans);
+      const segs = segmentsFor(line, page.lines[i]);
       if (!lineMatches(div, segs)) { buildLine(div, segs); rebuilt = true; }
-      const eq = div.querySelector('.eq');
-      if (eq && eq.getAttribute('data-r') !== ans) eq.setAttribute('data-r', ans);
       if (CONV.test(line)) anyConv = true;
     });
     els.placeholder.hidden = text !== '';
+    layoutAnswers();
     renderChips();
     renderFx(anyConv);
     return rebuilt;
   }
   function refresh() { if (render()) applySel(); }
+
+  // ---------- answers column ----------
+  function answerFor(info) {
+    if (!info.wantsAnswer) return null;
+    const a = info.a;
+    if (!a) return { text: '?', dim: true, why: 'This line can’t be worked out. Check the brackets, and that its names are set on a line above.' };
+    if (!isFinite(a.value)) return { text: 'Error', dim: true, why: 'Can’t divide by zero.' };
+    if (a.conv) {
+      if (info.value == null) return { text: '—', dim: true, why: 'No exchange rate yet. Go online once to download it.' };
+      return { text: money(info.value, a.conv.split('>')[1]), value: info.value };
+    }
+    if (a.simple) return null; // a plain number needs no answer next to it
+    return { text: fmt.result(info.value), value: info.value };
+  }
+
+  function layoutAnswers() {
+    const divs = els.note.childNodes, layer = els.answers;
+    const placed = [];
+    let n = 0;
+    page.lines.forEach((info, i) => {
+      const div = divs[i];
+      if (!div || div.nodeType !== 1) return;
+      const ans = answerFor(info);
+      if (!ans) { if (div.style.paddingRight) div.style.paddingRight = ''; return; }
+      let pill = layer.children[n++];
+      if (!pill) { pill = document.createElement('button'); pill.type = 'button'; layer.appendChild(pill); }
+      pill.className = 'ans' + (ans.dim ? ' dim' : '') + (i === menuLine ? ' active' : '');
+      if (pill.textContent !== ans.text) pill.textContent = ans.text;
+      pill.dataset.line = i;
+      placed.push({ div, pill });
+    });
+    while (layer.children.length > n) layer.lastChild.remove();
+    // Measure the answers, make room for them on their lines, then line each up with its line's last row.
+    const widths = placed.map(p => p.pill.offsetWidth);
+    placed.forEach((p, k) => {
+      const pr = widths[k] + 8 + 'px';
+      if (p.div.style.paddingRight !== pr) p.div.style.paddingRight = pr;
+    });
+    placed.forEach(p => { p.pill.style.top = p.div.offsetTop + p.div.offsetHeight - p.pill.offsetHeight + 'px'; });
+  }
+
+  // Tap an answer: a small menu (Use / Name / Copy). A stray tap changes nothing.
+  let menuLine = -1, menuValue = null;
+  function openMenu(pill) {
+    const i = +pill.dataset.line;
+    const ans = answerFor(page.lines[i]);
+    if (!ans || ans.dim) return;
+    closeMenu();
+    menuLine = i;
+    menuValue = ans.value;
+    pill.classList.add('active');
+    const m = els.menu;
+    m.hidden = false;
+    const r = pill.getBoundingClientRect(), mr = m.getBoundingClientRect();
+    let top = r.top - mr.height - 8;
+    if (top < els.scroller.getBoundingClientRect().top + 4) top = r.bottom + 8;
+    const left = Math.max(10, Math.min(r.right - mr.width, window.innerWidth - mr.width - 10));
+    m.style.top = top + 'px';
+    m.style.left = left + 'px';
+  }
+  function closeMenu() {
+    if (els.menu.hidden) return;
+    els.menu.hidden = true;
+    const p = els.answers.querySelector('.ans.active');
+    if (p) p.classList.remove('active');
+    menuLine = -1;
+  }
+  els.answers.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.target.closest('.ans')) e.preventDefault(); });
+  els.answers.addEventListener('click', e => {
+    const pill = e.target.closest('.ans');
+    if (!pill) return;
+    if (pill.classList.contains('dim')) {
+      const ans = answerFor(page.lines[+pill.dataset.line]);
+      if (ans) toast(ans.why);
+      return;
+    }
+    if (menuLine === +pill.dataset.line) { closeMenu(); return; }
+    openMenu(pill);
+  });
+  els.menu.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse') e.preventDefault(); });
+  els.menu.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const i = menuLine, v = menuValue;
+    closeMenu();
+    if (b.dataset.act === 'use') insertToken(E.rawString(v));
+    else if (b.dataset.act === 'name') openNameBox(i);
+    else if (b.dataset.act === 'copy') copyValue(v);
+  });
+  document.addEventListener('pointerdown', e => {
+    if (els.menu.hidden || els.menu.contains(e.target) || (e.target.closest && e.target.closest('.ans'))) return;
+    closeMenu();
+  }, true);
+  els.scroller.addEventListener('scroll', closeMenu, { passive: true });
+
+  function copyValue(v) {
+    const done = () => toast('Copied ' + fmt.result(v));
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(E.rawString(v)).then(done, () => toast('Couldn’t copy'));
+    else toast('Couldn’t copy');
+  }
 
   // ---------- selection (as absolute offsets into text) ----------
   function absOffset(node, offset) {
@@ -243,9 +339,9 @@
       if (rects.length) rect = rects[rects.length - 1];
     }
     if (!rect) rect = div.getBoundingClientRect();
-    const box = els.note.getBoundingClientRect();
-    if (rect.bottom > box.bottom - 12) els.note.scrollTop += rect.bottom - box.bottom + 24;
-    else if (rect.top < box.top + 4) els.note.scrollTop -= box.top - rect.top + 8;
+    const box = els.scroller.getBoundingClientRect();
+    if (rect.bottom > box.bottom - 12) els.scroller.scrollTop += rect.bottom - box.bottom + 24;
+    else if (rect.top < box.top + 4) els.scroller.scrollTop -= box.top - rect.top + 8;
   }
 
   // ---------- editing ----------
@@ -265,7 +361,7 @@
     text = text.slice(0, s) + line + text.slice(e);
     sel = [s + line.length, s + line.length];
   }
-  // Caret sits at the end of a line that already has its answer ("…=" or "…=name").
+  // Caret sits at the end of a finished line ("…=" or "… → name").
   function afterAnswer() {
     if (sel[0] !== sel[1]) return false;
     const { e, line } = lineAt(sel[1]);
@@ -284,7 +380,7 @@
       const { s, e, line } = lineAt(sel[1]);
       const idx = lineIndexAt(sel[1]);
       const info = page.lines[idx];
-      // A named answer: carry on from the name on a new line ("rent×").
+      // A named line: carry on from the name on a new line ("rent×").
       if (info && info.def) { newLine(); insert(info.def.name + sym); return; }
       const cont = E.continueLine(line, sym, varsBefore(idx));
       if (cont != null) { setLine(s, e, cont); return; }
@@ -301,7 +397,7 @@
 
   function equals() {
     const { s, e, line } = lineAt(sel[1]);
-    if (/=\s*$/.test(line) || E.defOf(line)) { sel = [e, e]; return; } // already has its answer: finish editing
+    if (/=\s*$/.test(line) || E.defOf(line)) { sel = [e, e]; return; } // already finished: just finish editing
     const body = line.replace(/[\s+\-−×÷*/]+$/, '');
     if (/[\d\p{L}]/u.test(body)) setLine(s, e, body + '=');
   }
@@ -310,7 +406,9 @@
     let [a, b] = sel;
     if (a === b) {
       if (a === 0) return;
-      const m = /\s?(\$→₹|₹→\$)$/.exec(text.slice(Math.max(0, a - 4), a)); // the currency token goes in one step
+      // The currency token and the " → " of a name each go in one step.
+      const tail = text.slice(Math.max(0, a - 4), a);
+      const m = /\s?(\$→₹|₹→\$)$/.exec(tail) || /\s?→\s?$/.exec(tail);
       a -= m ? m[0].length : 1;
     }
     sel = [a, b];
@@ -331,7 +429,7 @@
     } else {
       const head = (def ? line.slice(0, def.eq) : line.replace(/\s*=\s*$/, '')).replace(/\s+$/, '');
       if (!/[\d\p{L}]/u.test(head)) { toast('Type an amount first'); return; }
-      next = head + ' ' + settings.conv + (def ? line.slice(def.eq) : '=');
+      next = head + ' ' + settings.conv + (def ? ' ' + line.slice(def.eq) : '=');
     }
     save(K.settings, settings);
     setLine(s, e, next);
@@ -339,6 +437,7 @@
   }
 
   function press(k) {
+    closeMenu();
     syncSel();
     const before = { text, sel: sel.slice() };
     let kind = 'key';
@@ -358,14 +457,14 @@
     if (textChanged || sel[0] !== before.sel[0] || sel[1] !== before.sel[1]) changed(textChanged);
   }
 
-  // Name chips: tapping one puts the name at the cursor ("12" then rent → "12×rent").
-  function insertName(name) {
+  // Put a name or number at the cursor ("12" then rent → "12×rent"); on a finished line, start a new one.
+  function insertToken(str) {
     syncSel();
     const before = { text, sel: sel.slice() };
     if (afterAnswer()) newLine();
     const prev = sel[0] === sel[1] ? text[sel[0] - 1] : '';
     if (prev && /[\p{L}\p{N}_)%.]/u.test(prev)) insert('×');
-    insert(name);
+    insert(str);
     pushUndo(before, 'key');
     changed();
     ensureFocus();
@@ -379,6 +478,73 @@
     scheduleSave();
     updateDot();
   }
+
+  // ---------- naming ----------
+  let nameTarget = null;
+  function openNameBox(idx) {
+    const line = text.split('\n')[idx];
+    if (line == null) return;
+    const a = E.openValue(line, varsBefore(idx));
+    let value = a && isFinite(a.value) ? a.value : null;
+    let shown = value != null ? fmt.result(value) : '';
+    if (a && a.conv && value != null) {
+      value = convertAmount(value, a.conv);
+      shown = value == null ? '' : money(value, a.conv.split('>')[1]);
+    }
+    if (value == null) { toast('Nothing to name on this line — type a number or a calculation first'); return; }
+    const def = E.defOf(line);
+    nameTarget = { idx, line };
+    els.nbValue.textContent = shown;
+    els.nbInput.value = def ? def.name : '';
+    els.nbError.hidden = true;
+    els.nbRemove.hidden = !def;
+    els.nameBox.hidden = false;
+    els.nbInput.focus(); // inside the tap, so the iPhone keyboard comes up for the name
+    if (els.nbInput.value) els.nbInput.select();
+  }
+  function closeNameBox() {
+    els.nameBox.hidden = true;
+    els.nbInput.blur();
+    nameTarget = null;
+  }
+  function saveName(name) {
+    const t = nameTarget;
+    if (!t) return;
+    const lines = text.split('\n');
+    if (lines[t.idx] !== t.line) { closeNameBox(); toast('That line changed — try again'); return; }
+    const before = { text, sel: sel.slice() };
+    lines[t.idx] = E.nameLine(t.line, name);
+    text = lines.join('\n');
+    const end = lines.slice(0, t.idx + 1).join('\n').length;
+    sel = [end, end];
+    pushUndo(before, 'key');
+    closeNameBox();
+    changed();
+    ensureFocus();
+    toast(name ? 'Named ' + name : 'Name removed');
+  }
+  function nameCaretLine() {
+    closeMenu();
+    syncSel();
+    const lines = text.split('\n');
+    let idx = lineIndexAt(sel[1]);
+    while (idx > 0 && !lines[idx].trim()) idx--; // on a blank line, name the line above
+    if (!lines[idx] || !lines[idx].trim()) { toast('Type a number or a calculation first'); return; }
+    openNameBox(idx);
+  }
+  $('nbSave').addEventListener('click', () => {
+    const name = els.nbInput.value.trim();
+    if (!E.isValidName(name)) { els.nbError.hidden = false; return; }
+    saveName(name);
+  });
+  els.nbInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); $('nbSave').click(); }
+    else if (e.key === 'Escape') closeNameBox();
+  });
+  els.nbInput.addEventListener('input', () => { els.nbError.hidden = true; });
+  els.nbRemove.addEventListener('click', () => saveName(''));
+  $('nbCancel').addEventListener('click', () => { closeNameBox(); ensureFocus(); });
+  els.nameBox.addEventListener('click', e => { if (e.target === els.nameBox) { closeNameBox(); ensureFocus(); } });
 
   // ---------- undo ----------
   const undoStack = [];
@@ -396,6 +562,7 @@
   function undo() {
     const s = undoStack.pop();
     if (!s) return;
+    closeMenu();
     text = s.text;
     sel = s.sel;
     lastKind = '';
@@ -412,6 +579,7 @@
     if (!nativeBefore) { syncSel(); nativeBefore = { text, sel: sel.slice() }; }
   });
   function afterNativeInput() {
+    closeMenu();
     text = serialize(els.note);
     const s = readSel();
     if (s) sel = s;
@@ -440,15 +608,14 @@
     if (s) { sel = s; scheduleSave(); }
   });
 
-  // ---------- name chips ----------
+  // ---------- chips above the keypad: → Name, then one chip per name ----------
   let chipSig = '';
   function renderChips() {
     const list = [...page.vars.values()];
     const sig = JSON.stringify(list.map(v => [v.name, v.value]));
     if (sig === chipSig) return;
     chipSig = sig;
-    els.vars.hidden = !list.length;
-    els.vars.textContent = '';
+    els.varChips.textContent = '';
     for (const v of list) {
       const b = document.createElement('button');
       b.className = 'chip';
@@ -460,13 +627,14 @@
       val.className = 'chip-val';
       val.textContent = fmt.result(v.value);
       b.append(n, val);
-      els.vars.appendChild(b);
+      els.varChips.appendChild(b);
     }
   }
   els.vars.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.target.closest('.chip')) e.preventDefault(); });
   els.vars.addEventListener('click', e => {
-    const c = e.target.closest('.chip');
-    if (c) insertName(c.dataset.name);
+    if (e.target.closest('#nameChip')) { nameCaretLine(); return; }
+    const c = e.target.closest('.chip[data-name]');
+    if (c) insertToken(c.dataset.name);
   });
 
   // ---------- keypad ----------
@@ -505,9 +673,10 @@
     else ensureFocus();
   }
 
-  // ---------- ABC: the iPhone keyboard for typing words and names ----------
+  // ---------- ABC: the iPhone keyboard for typing words ----------
   let switching = false;
   function setTextMode(on) {
+    closeMenu();
     syncSel();
     textMode = on;
     els.app.classList.toggle('textmode', on);
@@ -518,7 +687,7 @@
     applySel();
     switching = false;
     sizeApp();
-    setTimeout(() => { sizeApp(); revealCaret(); }, 350);
+    setTimeout(() => { sizeApp(); layoutAnswers(); revealCaret(); }, 350);
   }
   els.note.addEventListener('blur', () => {
     if (!textMode || switching) return;
@@ -529,6 +698,7 @@
       els.app.classList.remove('textmode');
       els.note.setAttribute('inputmode', 'none');
       sizeApp();
+      layoutAnswers();
     }, 50);
   });
   $('keypadBtn').addEventListener('click', () => setTextMode(false));
@@ -549,7 +719,7 @@
     document.documentElement.style.setProperty('--app-h', h + 'px');
     els.app.style.transform = shift ? `translateY(${shift}px)` : '';
   }
-  window.addEventListener('resize', sizeApp);
+  window.addEventListener('resize', () => { sizeApp(); layoutAnswers(); closeMenu(); });
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', sizeApp);
     window.visualViewport.addEventListener('scroll', sizeApp);
@@ -559,12 +729,28 @@
   $('clearBtn').addEventListener('click', () => {
     if (!text) return;
     if (!confirm('Clear the whole page?\n\nYou can bring it back with Undo (↶) until you close the app.')) return;
+    closeMenu();
     pushUndo({ text, sel: sel.slice() }, 'clear');
     text = '';
     sel = [0, 0];
     changed();
     toast('Page cleared');
   });
+
+  // ---------- help ----------
+  function openHelp() {
+    closeMenu();
+    els.help.classList.add('open');
+    els.help.inert = false;
+    els.help.setAttribute('aria-hidden', 'false');
+  }
+  function closeHelp() {
+    els.help.classList.remove('open');
+    els.help.inert = true;
+    els.help.setAttribute('aria-hidden', 'true');
+  }
+  $('helpBtn').addEventListener('click', openHelp);
+  $('helpDone').addEventListener('click', closeHelp);
 
   // ---------- currency ----------
   // Primary: ECB reference rates via Frankfurter. Fallback: ExchangeRate-API's open endpoint. Both keyless.
@@ -672,9 +858,10 @@
     }
     el.classList.toggle('warn', !els.dot.hidden);
     els.diag.textContent = `Screen ${screen.width}×${screen.height} · view ${window.innerWidth}×${window.innerHeight} · ` +
-      `${navigator.standalone ? 'Home Screen app' : 'browser'} · version 3`;
+      `${navigator.standalone ? 'Home Screen app' : 'browser'} · version 4`;
   }
   function openSheet() {
+    closeMenu();
     renderBackupLine();
     els.sheet.classList.add('open');
     els.sheet.inert = false;
@@ -726,7 +913,7 @@
       let incoming = '';
       if (data && typeof data.text === 'string') incoming = data.text;
       else if (data && Array.isArray(data.history)) incoming = E.migrateV1(data.history).join('\n'); // version 1 backup
-      incoming = incoming.replace(/\s+$/, '');
+      incoming = E.modernizeNames(incoming.replace(/\s+$/, ''));
       if (!incoming) { toast('That backup is empty'); return; }
       if (text.includes(incoming)) { toast('That backup is already on the page'); return; }
       pushUndo({ text, sel: sel.slice() }, 'import');
@@ -753,7 +940,7 @@
     els.toast.textContent = msg;
     els.toast.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2000);
+    toastTimer = setTimeout(() => els.toast.classList.remove('show'), msg.length > 40 ? 3500 : 2000);
   }
 
   // ---------- start ----------
@@ -770,7 +957,13 @@
   render();
   updateDot();
   refreshFx(); // keep the saved rate fresh even when no line converts, so conversion works offline later
-  if (migrated) { saveNow(); toast('Your earlier calculations are on the page'); }
+  if (notice) { saveNow(); toast(notice); }
+  if (settings.helpSeen < HELP_VERSION) {
+    // First launch of this version: show the guide once.
+    settings.helpSeen = HELP_VERSION;
+    save(K.settings, settings);
+    openHelp();
+  }
 
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if ('serviceWorker' in navigator) {
