@@ -11,12 +11,19 @@ HTML/CSS/JS, no build step, no dependencies.
    (The Home Screen app keeps its own storage, separate from Safari's.)
 
 ## How it works
-- **One running page.** Each line is a calculation, and words are allowed ("Hotel (120+95)×2 ="). When a line
-  ends with `=`, its answer appears in orange. The trash button clears the page (Undo brings it back).
+- **One running page.** Each line is a calculation. Answers appear on the right as you type (30% dimmer) once
+  there are two numbers and an operator; `=` finishes the line (the answer turns solid). The trash button clears
+  the page (Undo brings it back). The text starts large and shrinks as the page fills, never below 22px.
+- **Words:** words before the maths are a label ("Hotel (120+95)×2"); a word right after a number is a note about it
+  (`700 rent + 500 food` = 1,200). Typing a letter straight after a number adds the space for you.
+- **Several lines:** a line starting with `+ − × ÷` carries on from the line above (× and ÷ apply to the running
+  total); the total shows on the last line. A blank line or a line starting with a number or word starts afresh.
 - **Edit anything.** Tap anywhere to place the cursor and change a number; answers update instantly.
 - **Brackets** `(` `)` go anywhere. A missing `)` is added for you, and `2(3+4)` multiplies.
-- **Calculator habits:** a number typed after an answer starts a new line. An operator after an answer
-  continues the same line, adding brackets when needed (`50+25+60=` then `×2` → `(50+25+60)×2=`).
+- **Calculator habits:** a number typed after an answer starts a new line; an operator after an answer starts a new
+  line that carries on from it (`50+25+60=` then `×2`).
+- **Live answers are not calculated** for a `-` or `/` typed between digits with no spaces (dates, phone numbers)
+  until you press `=`. The keypad's `−` and `÷` always count.
 - **Answers** sit in a column on the right as orange tags. Tap one for **Use** (puts the number on your line, or a new
   line if that one is finished), **Name**, or **Copy**. A plain number needs no answer; a grey `?` means the line
   can't be worked out (tap it for why).
@@ -46,6 +53,6 @@ end of the page. A red dot on the Backup button means a backup is overdue.
 - `tools/make_icons.py`: regenerates the icons (needs Pillow)
 
 ## Deploying a change
-Bump `VERSION` in `sw.js` (e.g. `calc-v3`) with every change, otherwise phones keep the cached old version.
+Bump `VERSION` in `sw.js` (e.g. `calc-v6`) with every change, otherwise phones keep the cached old version.
 Commit and push; GitHub Pages redeploys in about a minute, and the app reloads itself into the new version the
 next time it's opened.

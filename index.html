@@ -38,7 +38,7 @@
   <div id="scroller" class="page">
     <div id="note" class="note" contenteditable="true" inputmode="none" autocorrect="off" autocapitalize="off" spellcheck="false" role="textbox" aria-multiline="true" aria-label="Calculation page"></div>
     <div id="answers" class="answers"></div>
-    <div id="placeholder" class="placeholder">Type a calculation and press =</div>
+    <div id="placeholder" class="placeholder">Type a calculation</div>
   </div>
 
   <button id="fxBar" class="fxbar" hidden></button>
@@ -56,7 +56,7 @@
     </button>
     <button class="key fn" data-key="%">%</button>
     <button class="key fn fxkey" data-key="fx" aria-label="Convert dollars and rupees">$₹</button>
-    <button class="key fn" data-key="enter" aria-label="New line">
+    <button class="key fn enter" data-key="enter" aria-label="New line">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 5v6a3 3 0 0 1-3 3H5"/><path d="M9 10l-4 4 4 4"/></svg>
     </button>
     <button class="key op" data-key="/">÷</button>
@@ -72,8 +72,8 @@
     <button class="key" data-key="2">2</button>
     <button class="key" data-key="3">3</button>
     <button class="key op" data-key="+">+</button>
-    <button class="key" data-key="0">0</button>
     <button class="key" data-key="00">00</button>
+    <button class="key" data-key="0">0</button>
     <button class="key" data-key=".">.</button>
     <button class="key op" data-key="=">=</button>
   </section>
@@ -106,10 +106,11 @@
 <div id="help" class="help" aria-hidden="true" inert>
   <div class="help-head"><h2>How to use Calc</h2><button id="helpDone" class="done">Done</button></div>
   <div class="help-body">
-    <div class="h-item"><span class="h-ico">=</span><div><b>Calculate</b>Type a sum and press =. The answer shows on the right in orange.</div></div>
+    <div class="h-item"><span class="h-ico o">700</span><div><b>Just type</b>The answer shows on the right as you go, slightly dimmed. Press = to finish the line: the answer turns solid and the next number starts a new line.</div></div>
+    <div class="h-item"><span class="h-ico">abc</span><div><b>Notes between numbers</b>A word right after a number is just a note: <span class="h-ex">700 rent + 500 food</span> = 1,200.</div></div>
+    <div class="h-item"><span class="h-ico">+</span><div><b>Several lines</b>Start a line with + − × ÷ to carry on from the line above. The total shows on the last line. After an answer, pressing + − × ÷ does this for you.</div></div>
     <div class="h-item"><span class="h-ico">✎</span><div><b>Edit anything</b>Tap any number to put the cursor there and change it. Answers update straight away.</div></div>
     <div class="h-item"><span class="h-ico">( )</span><div><b>Brackets</b>Add them anywhere. A missing ) is added for you.</div></div>
-    <div class="h-item"><span class="h-ico">↵</span><div><b>Keep going</b>After an answer, a number starts a new line. + − × ÷ carries on with the same line.</div></div>
     <div class="h-item"><span class="h-ico o">700</span><div><b>Reuse an answer</b>Tap an orange answer: <i>Use</i> puts it on your line, <i>Copy</i> copies it.</div></div>
     <div class="h-item"><span class="h-ico o">→</span><div><b>Name a number</b>Tap <i>→ Name</i> above the keypad (or an answer's <i>Name</i>) and type a name, like <span class="h-name">rent</span>. The line reads <span class="h-ex">500+200 → <span class="h-name">rent</span></span>.</div></div>
     <div class="h-item"><span class="h-ico b">rent</span><div><b>Use a name</b>Tap its blue chip above the keypad, then carry on: <span class="h-ex"><span class="h-name">rent</span>×12=</span>. Change the original line and everything below updates.</div></div>

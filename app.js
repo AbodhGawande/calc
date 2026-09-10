@@ -2,7 +2,9 @@
 
    The page is plain text (lines joined by "\n"). The editor shows one <div class="ln"> per line, split into
    plain text and styled pieces (names in blue, the → of a named line). Answers are NOT in the editor: they are
-   tags in a separate layer, lined up on the right of each line, so the cursor can never sit beside one. */
+   tags in a separate layer, lined up on the right of each line, so the cursor can never sit beside one.
+   Answers appear live as you type (slightly dimmed); "=" finishes a line. The page text starts large and
+   shrinks as the page fills up. */
 (function () {
   'use strict';
 
@@ -12,7 +14,8 @@
   const OPS = '+−×÷-*/';
   const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
   const CONV = /\$→₹|₹→\$/;
-  const HELP_VERSION = 4; // bump to show the help page once after an update that changes how things work
+  const HELP_VERSION = 5; // bump to show the help page once after an update that changes how things work
+  const FS_MIN = 22, FS_MAX = 36; // page text size: starts at FS_MAX, never smaller than FS_MIN
 
   // ---------- storage ----------
   // localStorage is the only store. iOS may wipe it, so Backup ▸ Export is the safety net.
@@ -156,25 +159,53 @@
       if (CONV.test(line)) anyConv = true;
     });
     els.placeholder.hidden = text !== '';
-    layoutAnswers();
+    relayout();
     renderChips();
     renderFx(anyConv);
     return rebuilt;
   }
   function refresh() { if (render()) applySel(); }
+  function relayout() { fitFont(); layoutAnswers(); }
+
+  // Page text starts large and steps down as lines get longer or more numerous, never below FS_MIN.
+  // Widths scale with the font, so one measurement at FS_MAX tells us how far to shrink.
+  let fontSize = 0, measurer = null;
+  function fitFont() {
+    const lines = text.split('\n');
+    if (!measurer) measurer = document.createElement('canvas').getContext('2d');
+    measurer.font = `${FS_MAX}px ${getComputedStyle(els.note).fontFamily}`;
+    const width = els.note.clientWidth - 40 - 24; // the page's side margins, and the gap + padding of an answer tag
+    let k = 1;
+    lines.forEach((line, i) => {
+      if (!line) return;
+      const ans = page.lines[i] && answerFor(page.lines[i]);
+      const w = (measurer.measureText(line).width + (ans ? measurer.measureText(ans.text).width : 0)) * 1.04;
+      if (w > 0) k = Math.min(k, width / w);
+    });
+    const height = els.scroller.clientHeight - 32; // the page's top and bottom margins
+    k = Math.min(k, height / (Math.max(lines.length, 1) * FS_MAX * 1.5));
+    const fs = Math.max(FS_MIN, Math.min(FS_MAX, Math.floor(FS_MAX * k)));
+    if (fs !== fontSize) {
+      fontSize = fs;
+      els.scroller.style.setProperty('--fs', fs + 'px');
+    }
+  }
 
   // ---------- answers column ----------
   function answerFor(info) {
-    if (!info.wantsAnswer) return null;
-    const a = info.a;
-    if (!a) return { text: '?', dim: true, why: 'This line can’t be worked out. Check the brackets, and that its names are set on a line above.' };
-    if (!isFinite(a.value)) return { text: 'Error', dim: true, why: 'Can’t divide by zero.' };
-    if (a.conv) {
-      if (info.value == null) return { text: '—', dim: true, why: 'No exchange rate yet. Go online once to download it.' };
-      return { text: money(info.value, a.conv.split('>')[1]), value: info.value };
+    switch (info.status) {
+      case 'answer':
+      case 'live':
+        return {
+          text: info.conv ? money(info.value, info.conv.split('>')[1]) : fmt.result(info.value),
+          value: info.value,
+          live: info.status === 'live',
+        };
+      case 'unknown': return { text: '?', dim: true, why: 'This line can’t be worked out. Check the brackets, and that its names are set on a line above.' };
+      case 'error': return { text: 'Error', dim: true, why: 'Can’t divide by zero.' };
+      case 'norate': return { text: '—', dim: true, why: 'No exchange rate yet. Go online once to download it.' };
+      default: return null;
     }
-    if (a.simple) return null; // a plain number needs no answer next to it
-    return { text: fmt.result(info.value), value: info.value };
   }
 
   function layoutAnswers() {
@@ -188,7 +219,7 @@
       if (!ans) { if (div.style.paddingRight) div.style.paddingRight = ''; return; }
       let pill = layer.children[n++];
       if (!pill) { pill = document.createElement('button'); pill.type = 'button'; layer.appendChild(pill); }
-      pill.className = 'ans' + (ans.dim ? ' dim' : '') + (i === menuLine ? ' active' : '');
+      pill.className = 'ans' + (ans.dim ? ' dim' : '') + (ans.live ? ' live' : '') + (i === menuLine ? ' active' : '');
       if (pill.textContent !== ans.text) pill.textContent = ans.text;
       pill.dataset.line = i;
       placed.push({ div, pill });
@@ -372,21 +403,9 @@
     sel = [e, e];
     insert('\n');
   }
-  // Names set above a given line.
-  const varsBefore = idx => E.evaluatePage(text.split('\n').slice(0, idx), convertAmount).vars;
-
   function operator(sym) {
-    if (afterAnswer()) {
-      const { s, e, line } = lineAt(sel[1]);
-      const idx = lineIndexAt(sel[1]);
-      const info = page.lines[idx];
-      // A named line: carry on from the name on a new line ("rent×").
-      if (info && info.def) { newLine(); insert(info.def.name + sym); return; }
-      const cont = E.continueLine(line, sym, varsBefore(idx));
-      if (cont != null) { setLine(s, e, cont); return; }
-      // A conversion: carry on from the converted amount on a new line.
-      if (info && info.value != null && isFinite(info.value)) { newLine(); insert(E.rawString(info.value) + sym); return; }
-    }
+    // After a finished line, + − × ÷ starts a new line that carries on from its answer ("×2" under "50+25=").
+    if (afterAnswer()) { newLine(); insert(sym); return; }
     if (sel[0] === sel[1]) {
       const prev = text[sel[0] - 1];
       // Pressing another operator replaces the last one — except "−" after × or ÷ (a negative number).
@@ -482,16 +501,11 @@
   // ---------- naming ----------
   let nameTarget = null;
   function openNameBox(idx) {
-    const line = text.split('\n')[idx];
-    if (line == null) return;
-    const a = E.openValue(line, varsBefore(idx));
-    let value = a && isFinite(a.value) ? a.value : null;
-    let shown = value != null ? fmt.result(value) : '';
-    if (a && a.conv && value != null) {
-      value = convertAmount(value, a.conv);
-      shown = value == null ? '' : money(value, a.conv.split('>')[1]);
-    }
+    const line = text.split('\n')[idx], info = page.lines[idx];
+    if (line == null || !info) return;
+    const value = info.value != null && isFinite(info.value) ? info.value : null; // the running total on multi-line sums
     if (value == null) { toast('Nothing to name on this line — type a number or a calculation first'); return; }
+    const shown = info.conv ? money(value, info.conv.split('>')[1]) : fmt.result(value);
     const def = E.defOf(line);
     nameTarget = { idx, line };
     els.nbValue.textContent = shown;
@@ -580,10 +594,19 @@
   });
   function afterNativeInput() {
     closeMenu();
+    const old = text;
     text = serialize(els.note);
     const s = readSel();
     if (s) sel = s;
-    refresh();
+    // A letter typed straight after a number gets a space before it: "700r" → "700 r" (a note about the 700).
+    const c = sel[0];
+    if (sel[0] === sel[1] && text.length === old.length + 1 &&
+        /\p{L}/u.test(text[c - 1] || '') && /[\d%)]/.test(text[c - 2] || '')) {
+      text = text.slice(0, c - 1) + ' ' + text.slice(c - 1);
+      sel = [c + 1, c + 1];
+      render();
+      applySel();
+    } else refresh();
     if (nativeBefore && nativeBefore.text !== text) pushUndo(nativeBefore, 'native');
     nativeBefore = null;
     updatedAt = Date.now();
@@ -687,7 +710,7 @@
     applySel();
     switching = false;
     sizeApp();
-    setTimeout(() => { sizeApp(); layoutAnswers(); revealCaret(); }, 350);
+    setTimeout(() => { sizeApp(); relayout(); revealCaret(); }, 350);
   }
   els.note.addEventListener('blur', () => {
     if (!textMode || switching) return;
@@ -698,7 +721,7 @@
       els.app.classList.remove('textmode');
       els.note.setAttribute('inputmode', 'none');
       sizeApp();
-      layoutAnswers();
+      relayout();
     }, 50);
   });
   $('keypadBtn').addEventListener('click', () => setTextMode(false));
@@ -719,7 +742,7 @@
     document.documentElement.style.setProperty('--app-h', h + 'px');
     els.app.style.transform = shift ? `translateY(${shift}px)` : '';
   }
-  window.addEventListener('resize', () => { sizeApp(); layoutAnswers(); closeMenu(); });
+  window.addEventListener('resize', () => { sizeApp(); relayout(); closeMenu(); });
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', sizeApp);
     window.visualViewport.addEventListener('scroll', sizeApp);
@@ -858,7 +881,7 @@
     }
     el.classList.toggle('warn', !els.dot.hidden);
     els.diag.textContent = `Screen ${screen.width}×${screen.height} · view ${window.innerWidth}×${window.innerHeight} · ` +
-      `${navigator.standalone ? 'Home Screen app' : 'browser'} · version 4`;
+      `${navigator.standalone ? 'Home Screen app' : 'browser'} · version 5`;
   }
   function openSheet() {
     closeMenu();

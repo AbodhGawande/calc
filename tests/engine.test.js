@@ -93,7 +93,10 @@ test('names: order, redefinition, capitals, highlighting', () => {
   assert.deepEqual(values(E.evaluatePage(['b×2=', '3=b'])), [null, 3]);          // only lines below can use a name
   assert.deepEqual(values(E.evaluatePage(['5=a', 'a+1=a', 'a='])), [5, 6, 6]);   // setting it again takes over
   assert.deepEqual(values(E.evaluatePage(['10=Rent', 'rent+1='])), [10, 11]);    // capitals don't matter
-  assert.deepEqual(E.evaluatePage(['10=rent', 'rent share rent÷2=']).lines[1].names, [[0, 4], [11, 15]]);
+  // only the name used in the maths is highlighted; "share rent" after it is a note
+  const shared = E.evaluatePage(['10=rent', 'rent share rent÷2=']).lines[1];
+  assert.deepEqual(shared.names, [[0, 4]]);
+  assert.equal(shared.value, 5);
   assert.equal(E.evaluatePage(['hello=world']).lines[0].def, null);             // nothing to name
   assert.equal(E.evaluatePage(['5/0=x', 'x=']).lines[1].value, null);           // errors aren't stored
 });
@@ -143,6 +146,51 @@ test('lines that ask for an answer but have none are flagged', () => {
   assert.deepEqual(p.lines.map(l => l.wantsAnswer), [true, false, true, true]);
   assert.equal(p.lines[0].a, null);
   assert.equal(p.lines[3].def, null);
+});
+
+const statuses = page => page.lines.map(l => l.status);
+
+test('words right after a number are notes', () => {
+  assert.equal(E.analyzeLine('700 rent + 500 food =').value, 1200);
+  assert.equal(E.analyzeLine('500 food items + 20 tip=').value, 520);
+  assert.equal(E.analyzeLine('700rs+300rs=').value, 1000);
+  const p = E.evaluatePage(['700 → rent', '700 rent + 500 food =', '2rent=', 'rent×2=']);
+  assert.deepEqual(values(p), [700, 1200, 1400, 1400]);
+  assert.deepEqual(p.lines[1].names, []);        // "rent" after a number is a note, not the name
+  assert.deepEqual(p.lines[3].names, [[0, 4]]);  // "rent" where a number is expected is the name
+});
+
+test('multi-line calculations', () => {
+  let p = E.evaluatePage(['700 rent', '+500 food', '+20 tip = sum', 'sum×2=']);
+  assert.deepEqual(values(p), [700, 1200, 1220, 2440]);
+  assert.deepEqual(statuses(p), [null, null, 'answer', 'answer']);
+  assert.equal(p.lines[2].def.name, 'sum');
+  assert.deepEqual(values(E.evaluatePage(['700', '+500', '×2='])), [700, 1200, 2400]); // × applies to the total
+  assert.deepEqual(values(E.evaluatePage(['200', '−10%='])), [200, 180]);
+  p = E.evaluatePage(['700', '+500 =', '+20 =']);                                       // subtotals
+  assert.deepEqual(values(p), [700, 1200, 1220]);
+  assert.deepEqual(statuses(p), [null, 'answer', 'answer']);
+  assert.deepEqual(values(E.evaluatePage(['5', '', '+3='])), [5, null, 3]);            // a blank line ends it
+  assert.deepEqual(values(E.evaluatePage(['Groceries', '+500', '+20 ='])), [null, 500, 520]);
+  p = E.evaluatePage(['700', '- buy milk']);                                            // a list item, not maths
+  assert.equal(p.lines[1].cont, false);
+  assert.equal(p.lines[1].value, null);
+});
+
+test('live answers while typing', () => {
+  assert.deepEqual(statuses(E.evaluatePage(['500+200'])), ['live']);
+  assert.deepEqual(statuses(E.evaluatePage(['700 rent'])), [null]);                     // nothing to add up yet
+  assert.deepEqual(statuses(E.evaluatePage(['700', '+500'])), [null, 'live']);          // total on the last line
+  assert.deepEqual(statuses(E.evaluatePage(['700', '+'])), [null, 'live']);             // just typed "+"
+  assert.deepEqual(values(E.evaluatePage(['700', '+'])), [700, 700]);
+  assert.deepEqual(statuses(E.evaluatePage(['500+'])), [null]);                         // trailing operator ignored
+  assert.deepEqual(statuses(E.evaluatePage(['2024-25 budget', '555-1234', '10/9'])), [null, null, null]);
+  assert.deepEqual(values(E.evaluatePage(['2024−25'])), [1999]);                        // the keypad's − counts
+  assert.equal(E.evaluatePage(['2024-25=']).lines[0].value, 1999);                      // "=" calculates anyway
+  assert.deepEqual(statuses(E.evaluatePage(['5/0'])), [null]);                          // no live errors
+  const named = E.evaluatePage(['9 → rent', 'rent×']);
+  assert.deepEqual(named.lines[1].names, [[0, 4]]);                                     // still highlighted mid-typing
+  assert.deepEqual(statuses(E.evaluatePage(['100 $→₹'], v => v * 95)), ['live']);
 });
 
 test('version 1 history becomes lines', () => {
