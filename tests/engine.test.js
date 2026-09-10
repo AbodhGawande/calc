@@ -71,6 +71,45 @@ test('an operator after an answer continues the line, with brackets only when ne
   assert.equal(E.continueLine('words', '×'), null);
 });
 
+test('a calculation never starts part-way through, so unknown words give no answer', () => {
+  assert.equal(E.analyzeLine('Hotel×12='), null);
+  assert.equal(E.analyzeLine('rent+5='), null);
+  assert.equal(E.analyzeLine('62+3+4)×5+10='), null); // a stray ")" gives no answer, not a wrong 10
+  assert.equal(E.analyzeLine('Room 3 50+25=').value, 75);
+  assert.equal(E.analyzeLine('5 −3=').value, 2);
+});
+
+const values = page => page.lines.map(l => l.value);
+
+test('naming answers and using the names below', () => {
+  const p = E.evaluatePage(['50+50=rent', 'rent×12= yearly', 'yearly÷4=', 'Hotel×12=', '2rent=', 'rent(3)=', '200= Rent2']);
+  assert.deepEqual(values(p), [100, 1200, 300, null, 200, 300, 200]);
+  assert.equal(p.lines[0].def.name, 'rent');
+  assert.deepEqual(p.lines[1].names, [[0, 4]]);
+  assert.deepEqual([...p.vars.values()].map(v => [v.name, v.value]), [['rent', 100], ['yearly', 1200], ['Rent2', 200]]);
+});
+
+test('names: order, redefinition, capitals, highlighting', () => {
+  assert.deepEqual(values(E.evaluatePage(['b×2=', '3=b'])), [null, 3]);          // only lines below can use a name
+  assert.deepEqual(values(E.evaluatePage(['5=a', 'a+1=a', 'a='])), [5, 6, 6]);   // setting it again takes over
+  assert.deepEqual(values(E.evaluatePage(['10=Rent', 'rent+1='])), [10, 11]);    // capitals don't matter
+  assert.deepEqual(E.evaluatePage(['10=rent', 'rent share rent÷2=']).lines[1].names, [[0, 4], [11, 15]]);
+  assert.equal(E.evaluatePage(['hello=world']).lines[0].def, null);             // nothing to name
+  assert.equal(E.evaluatePage(['5/0=x', 'x=']).lines[1].value, null);           // errors aren't stored
+});
+
+test('naming a conversion stores the converted amount', () => {
+  const p = E.evaluatePage(['100 $→₹=inr', 'inr÷2='], (v, c) => (c === 'USD>INR' ? v * 95 : v / 95));
+  assert.deepEqual(values(p), [9500, 4750]);
+  assert.equal(E.evaluatePage(['100 $→₹=inr'], () => null).lines[0].def, null);  // no rate yet
+});
+
+test('continuing a line that uses names', () => {
+  const vars = new Map([['rent', { name: 'rent', value: 100 }]]);
+  assert.equal(E.continueLine('rent+5=', '×', vars), '(rent+5)×');
+  assert.equal(E.continueLine('5=x', '×'), null);
+});
+
 test('version 1 history becomes lines', () => {
   const history = [
     { id: 'b', ts: 2, type: 'fx', from: 'USD', to: 'INR', amount: 55, result: 5249.2, rate: 95.44 },

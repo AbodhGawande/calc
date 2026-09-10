@@ -9,6 +9,7 @@
   --text: #fff;
   --dim: #8e8e93;
   --line: #38383a;
+  --name: #64d2ff;
   --kh: clamp(40px, calc(var(--app-h, 100vh) * 0.058), 54px); /* key height */
   color-scheme: dark;
 }
@@ -70,7 +71,17 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   touch-action: manipulation;
 }
 .ln { min-height: 1.5em; }
-.ln[data-r]::after { content: attr(data-r); color: var(--op); margin-left: 0.12em; }
+.eq[data-r]::after { content: attr(data-r); color: var(--op); margin-left: 0.12em; }
+/* names stand out from numbers: blue and bolder, both where they're set and where they're used */
+.v, .def { color: var(--name); font-weight: 600; }
+.def::before { content: '→\2009'; color: var(--dim); font-weight: 400; margin-left: 0.3em; }
+
+.vars { flex: none; display: flex; gap: 8px; overflow-x: auto; padding: 2px 14px 4px; scrollbar-width: none; touch-action: pan-x; }
+.vars::-webkit-scrollbar { display: none; }
+.textmode .vars { display: none; }
+.chip { flex: none; display: inline-flex; align-items: baseline; gap: 6px; height: 34px; padding: 0 13px; border-radius: 17px; background: #1c1c1e; font-size: 16px; line-height: 34px; white-space: nowrap; }
+.chip-name { color: var(--name); font-weight: 600; }
+.chip-val { color: var(--dim); font-size: 14px; }
 .placeholder { position: absolute; top: 4px; left: 20px; font-size: 22px; line-height: 1.5; color: #48484a; pointer-events: none; }
 
 .fxbar { flex: none; align-self: flex-end; margin: 0 18px 2px; padding: 4px 0; font-size: 12px; color: var(--dim); }
@@ -141,7 +152,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 /* ---------- toast ---------- */
 .toast {
   position: fixed;
-  bottom: calc(env(safe-area-inset-bottom) + 6 * var(--kh) + 70px); /* just above the keypad, clear of the page text */
+  bottom: calc(env(safe-area-inset-bottom) + 6 * var(--kh) + 112px); /* above the keypad and name chips, clear of the page text */
   left: 50%;
   z-index: 20;
   padding: 9px 16px;

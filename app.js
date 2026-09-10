@@ -1,7 +1,8 @@
-/* Calc — the note page: editor, keypad, currency, backup. All maths lives in engine.js.
+/* Calc — the note page: editor, keypad, names, currency, backup. All maths lives in engine.js.
 
-   The page is plain text (lines joined by "\n"). The editor shows one <div class="ln"> per line,
-   and each line's answer is drawn by CSS (::after from data-r), so answers are never part of the text. */
+   The page is plain text (lines joined by "\n"). The editor shows one <div class="ln"> per line, split into
+   plain text and styled pieces: names (blue), the "=" whose answer CSS draws after it (::after from data-r),
+   and a name being set. Answers are never part of the text. */
 (function () {
   'use strict';
 
@@ -24,7 +25,7 @@
 
   const $ = id => document.getElementById(id);
   const els = {
-    app: $('app'), note: $('note'), placeholder: $('placeholder'), keypad: $('keypad'), fxBar: $('fxBar'),
+    app: $('app'), note: $('note'), placeholder: $('placeholder'), keypad: $('keypad'), fxBar: $('fxBar'), vars: $('vars'),
     undo: $('undoBtn'), dot: $('backupDot'), sheet: $('sheet'), backupLine: $('backupLine'), diag: $('diag'),
     file: $('importFile'), toast: $('toast'),
   };
@@ -49,6 +50,7 @@
   let backup = load(K.backup, null);
   let fxBusy = false;
   let textMode = false;
+  let page = { lines: [], vars: new Map() }; // the latest E.evaluatePage result
 
   let saveTimer;
   function saveNow() { clearTimeout(saveTimer); save(K.note, { text, sel, updatedAt }); }
@@ -57,7 +59,7 @@
   // ---------- editor DOM ----------
   const BLOCK = /^(DIV|P|LI|H[1-6]|BLOCKQUOTE|PRE|UL|OL|SECTION|ARTICLE)$/;
 
-  // DOM → text. Copes with whatever the browser produced (divs, <br>s, stray text nodes).
+  // DOM → text. Copes with whatever the browser produced (divs, spans, <br>s, stray text nodes).
   function serialize(root) {
     const lines = [''];
     let needBreak = false, count = 0;
@@ -89,35 +91,81 @@
     return lines.join('\n');
   }
 
-  function isCanonicalLine(n) {
-    if (n.nodeType !== 1 || n.nodeName !== 'DIV' || n.className !== 'ln' || n.childNodes.length !== 1) return false;
-    const c = n.firstChild;
-    return c.nodeType === 3 ? c.nodeValue !== '' && !c.nodeValue.includes('\n') : c.nodeName === 'BR';
+  function answerText(info) {
+    const a = info.a;
+    if (!a) return null;
+    if (!isFinite(a.value)) return 'Error';
+    if (a.conv) return info.value == null ? '—' : money(info.value, a.conv.split('>')[1]);
+    return fmt.result(info.value);
   }
-  function isCanonical() {
-    const kids = els.note.childNodes;
-    if (!kids.length) return false;
-    for (const k of kids) if (!isCanonicalLine(k)) return false;
-    return true;
-  }
-  const lineOf = div => (div.firstChild && div.firstChild.nodeType === 3 ? div.firstChild.nodeValue : '');
 
-  // text → DOM, touching only lines that changed.
+  // Split a line into plain text and styled pieces: 'v' = a name in use, 'eq' = the "=" that shows the answer,
+  // 'def' = the name this line sets.
+  function segmentsFor(line, info, ans) {
+    const marks = info.names.map(([s, e]) => [s, e, 'v']);
+    if (ans != null) marks.push([info.a.eqIndex, info.a.eqIndex + 1, 'eq']);
+    if (info.def) marks.push([info.def.start, info.def.end, 'def']);
+    marks.sort((x, y) => x[0] - y[0]);
+    const segs = [];
+    let p = 0;
+    for (const [s, e, cls] of marks) {
+      if (s > p) segs.push({ text: line.slice(p, s), cls: '' });
+      segs.push({ text: line.slice(s, e), cls });
+      p = e;
+    }
+    if (p < line.length) segs.push({ text: line.slice(p), cls: '' });
+    return segs;
+  }
+
+  function lineMatches(div, segs) {
+    const kids = div.childNodes;
+    if (!segs.length) return kids.length === 1 && kids[0].nodeName === 'BR';
+    if (kids.length !== segs.length) return false;
+    return segs.every((sg, i) => {
+      const n = kids[i];
+      if (!sg.cls) return n.nodeType === 3 && n.nodeValue === sg.text;
+      return n.nodeName === 'SPAN' && n.className === sg.cls && n.childNodes.length === 1 &&
+        n.firstChild.nodeType === 3 && n.firstChild.nodeValue === sg.text;
+    });
+  }
+
+  function buildLine(div, segs) {
+    div.textContent = '';
+    if (!segs.length) { div.appendChild(document.createElement('br')); return; }
+    for (const sg of segs) {
+      if (!sg.cls) { div.appendChild(document.createTextNode(sg.text)); continue; }
+      const span = document.createElement('span');
+      span.className = sg.cls;
+      span.textContent = sg.text;
+      div.appendChild(span);
+    }
+  }
+
+  // text → DOM, touching only lines whose pieces changed. Returns true if any line was rebuilt.
   function render() {
     const lines = text.split('\n');
+    page = E.evaluatePage(lines, convertAmount);
     const note = els.note;
-    if (!isCanonical()) note.textContent = '';
-    while (note.childNodes.length > lines.length) note.lastChild.remove();
-    lines.forEach((s, i) => {
+    let rebuilt = false, anyConv = false;
+    if (![...note.childNodes].every(n => n.nodeName === 'DIV')) { note.textContent = ''; rebuilt = true; }
+    while (note.childNodes.length > lines.length) { note.lastChild.remove(); rebuilt = true; }
+    lines.forEach((line, i) => {
       let div = note.childNodes[i];
-      if (!div) { div = document.createElement('div'); div.className = 'ln'; note.appendChild(div); }
-      else if (lineOf(div) === s) return;
-      div.textContent = '';
-      div.appendChild(s ? document.createTextNode(s) : document.createElement('br'));
+      if (!div) { div = document.createElement('div'); note.appendChild(div); }
+      if (div.className !== 'ln') div.className = 'ln';
+      const info = page.lines[i], ans = answerText(info);
+      const segs = segmentsFor(line, info, ans);
+      if (!lineMatches(div, segs)) { buildLine(div, segs); rebuilt = true; }
+      const eq = div.querySelector('.eq');
+      if (eq && eq.getAttribute('data-r') !== ans) eq.setAttribute('data-r', ans);
+      if (CONV.test(line)) anyConv = true;
     });
     els.placeholder.hidden = text !== '';
-    updateResults(lines);
+    renderChips();
+    renderFx(anyConv);
+    return rebuilt;
   }
+  function refresh() { if (render()) applySel(); }
 
   // ---------- selection (as absolute offsets into text) ----------
   function absOffset(node, offset) {
@@ -152,8 +200,22 @@
     while (i < lines.length - 1 && rem > lines[i].length) { rem -= lines[i].length + 1; i++; }
     const div = els.note.childNodes[i];
     if (!div) return [els.note, els.note.childNodes.length];
-    const t = div.firstChild;
-    return t && t.nodeType === 3 ? [t, Math.min(rem, t.nodeValue.length)] : [div, 0];
+    const parts = [];
+    div.childNodes.forEach(n => {
+      if (n.nodeType === 3) parts.push({ node: n, plain: true });
+      else if (n.firstChild && n.firstChild.nodeType === 3) parts.push({ node: n.firstChild, plain: false });
+    });
+    if (!parts.length) return [div, 0];
+    for (let k = 0; k < parts.length; k++) {
+      const len = parts[k].node.nodeValue.length;
+      if (rem < len) return [parts[k].node, rem];
+      // On a boundary, stay in plain text; after a styled piece, move to the start of the next one.
+      if (rem === len && (parts[k].plain || k === parts.length - 1)) return [parts[k].node, len];
+      rem -= len;
+      if (rem === 0) return [parts[k + 1].node, 0];
+    }
+    const last = parts[parts.length - 1].node;
+    return [last, last.nodeValue.length];
   }
   function applySel() {
     if (document.activeElement !== els.note) return;
@@ -172,7 +234,7 @@
     revealCaret();
   }
   function revealCaret() {
-    const div = els.note.childNodes[text.slice(0, sel[1]).split('\n').length - 1];
+    const div = els.note.childNodes[lineIndexAt(sel[1])];
     if (!div) return;
     let rect = null;
     const s = window.getSelection();
@@ -186,40 +248,8 @@
     else if (rect.top < box.top + 4) els.note.scrollTop -= box.top - rect.top + 8;
   }
 
-  // ---------- answers ----------
-  function lineValue(line) {
-    const a = E.analyzeLine(line);
-    if (!a) return null;
-    if (!isFinite(a.value)) return { text: 'Error', value: null };
-    if (!a.conv) return { text: fmt.result(a.value), value: a.value };
-    const [from, to] = a.conv.split('>');
-    const r = rate(from, to);
-    if (r == null) return { text: '—', value: null };
-    const v = round2(a.value * r);
-    return { text: money(v, to), value: v };
-  }
-
-  function updateResults(lines = text.split('\n')) {
-    const divs = els.note.childNodes;
-    let anyConv = false;
-    for (let i = 0; i < divs.length; i++) {
-      const d = divs[i], line = lines[i] || '';
-      if (d.nodeType !== 1) continue;
-      const res = lineValue(line);
-      if (res) {
-        if (d.getAttribute('data-r') !== res.text) d.setAttribute('data-r', res.text);
-        if (res.value != null) d.dataset.v = res.value;
-        else delete d.dataset.v;
-      } else if (d.hasAttribute('data-r')) {
-        d.removeAttribute('data-r');
-        delete d.dataset.v;
-      }
-      if (CONV.test(line)) anyConv = true;
-    }
-    renderFx(anyConv);
-  }
-
   // ---------- editing ----------
+  const lineIndexAt = pos => text.slice(0, pos).split('\n').length - 1;
   function lineAt(pos) {
     const s = pos === 0 ? 0 : text.lastIndexOf('\n', pos - 1) + 1;
     let e = text.indexOf('\n', pos);
@@ -235,25 +265,31 @@
     text = text.slice(0, s) + line + text.slice(e);
     sel = [s + line.length, s + line.length];
   }
-  // Caret sits at the end of a line that already has its "=".
+  // Caret sits at the end of a line that already has its answer ("…=" or "…=name").
   function afterAnswer() {
     if (sel[0] !== sel[1]) return false;
     const { e, line } = lineAt(sel[1]);
-    return /=\s*$/.test(line) && text.slice(sel[1], e).trim() === '';
+    return text.slice(sel[1], e).trim() === '' && (/=\s*$/.test(line) || !!E.defOf(line));
   }
   function newLine() {
     const { e } = lineAt(sel[1]);
     sel = [e, e];
     insert('\n');
   }
+  // Names set above a given line.
+  const varsBefore = idx => E.evaluatePage(text.split('\n').slice(0, idx), convertAmount).vars;
 
   function operator(sym) {
     if (afterAnswer()) {
       const { s, e, line } = lineAt(sel[1]);
-      const cont = E.continueLine(line, sym);
+      const idx = lineIndexAt(sel[1]);
+      const info = page.lines[idx];
+      // A named answer: carry on from the name on a new line ("rent×").
+      if (info && info.def) { newLine(); insert(info.def.name + sym); return; }
+      const cont = E.continueLine(line, sym, varsBefore(idx));
       if (cont != null) { setLine(s, e, cont); return; }
-      const v = lineValue(line); // a conversion: carry on from the converted amount on a new line
-      if (v && v.value != null) { newLine(); insert(E.rawString(v.value) + sym); return; }
+      // A conversion: carry on from the converted amount on a new line.
+      if (info && info.value != null && isFinite(info.value)) { newLine(); insert(E.rawString(info.value) + sym); return; }
     }
     if (sel[0] === sel[1]) {
       const prev = text[sel[0] - 1];
@@ -265,9 +301,9 @@
 
   function equals() {
     const { s, e, line } = lineAt(sel[1]);
-    if (/=\s*$/.test(line)) { sel = [e, e]; return; } // already has "=": just finish editing the line
+    if (/=\s*$/.test(line) || E.defOf(line)) { sel = [e, e]; return; } // already has its answer: finish editing
     const body = line.replace(/[\s+\-−×÷*/]+$/, '');
-    if (/\d/.test(body)) setLine(s, e, body + '=');
+    if (/[\d\p{L}]/u.test(body)) setLine(s, e, body + '=');
   }
 
   function backspace() {
@@ -285,6 +321,7 @@
   function convert() {
     const { s, e, line } = lineAt(sel[1]);
     const all = [...line.matchAll(/\$→₹|₹→\$/g)];
+    const def = E.defOf(line);
     let next;
     if (all.length) {
       const m = all[all.length - 1];
@@ -292,9 +329,9 @@
       next = line.slice(0, m.index) + flipped + line.slice(m.index + m[0].length);
       settings.conv = flipped;
     } else {
-      const body = line.replace(/\s*=\s*$/, '').replace(/\s+$/, '');
-      if (!/\d/.test(body)) { toast('Type an amount first'); return; }
-      next = body + ' ' + settings.conv + '=';
+      const head = (def ? line.slice(0, def.eq) : line.replace(/\s*=\s*$/, '')).replace(/\s+$/, '');
+      if (!/[\d\p{L}]/u.test(head)) { toast('Type an amount first'); return; }
+      next = head + ' ' + settings.conv + (def ? line.slice(def.eq) : '=');
     }
     save(K.settings, settings);
     setLine(s, e, next);
@@ -319,6 +356,19 @@
     const textChanged = text !== before.text;
     if (textChanged) pushUndo(before, kind);
     if (textChanged || sel[0] !== before.sel[0] || sel[1] !== before.sel[1]) changed(textChanged);
+  }
+
+  // Name chips: tapping one puts the name at the cursor ("12" then rent → "12×rent").
+  function insertName(name) {
+    syncSel();
+    const before = { text, sel: sel.slice() };
+    if (afterAnswer()) newLine();
+    const prev = sel[0] === sel[1] ? text[sel[0] - 1] : '';
+    if (prev && /[\p{L}\p{N}_)%.]/u.test(prev)) insert('×');
+    insert(name);
+    pushUndo(before, 'key');
+    changed();
+    ensureFocus();
   }
 
   function changed(textChanged = true) {
@@ -365,8 +415,7 @@
     text = serialize(els.note);
     const s = readSel();
     if (s) sel = s;
-    if (!isCanonical()) { render(); applySel(); }
-    else { els.placeholder.hidden = text !== ''; updateResults(); }
+    refresh();
     if (nativeBefore && nativeBefore.text !== text) pushUndo(nativeBefore, 'native');
     nativeBefore = null;
     updatedAt = Date.now();
@@ -391,40 +440,34 @@
     if (s) { sel = s; scheduleSave(); }
   });
 
-  // ---------- tap an answer to insert it at the cursor ----------
-  function answerAt(x, y) {
-    const el = document.elementFromPoint(x, y);
-    const div = el && el.closest && el.closest('.ln');
-    if (!div || !els.note.contains(div) || div.dataset.v == null) return null;
-    const r = document.createRange();
-    r.selectNodeContents(div);
-    const rects = [...r.getClientRects()].filter(q => q.width || q.height);
-    if (!rects.length) return null;
-    const last = rects[rects.length - 1], box = div.getBoundingClientRect();
-    const onTextRow = y >= last.top - 2 && y <= last.bottom + 2 && x > last.right + 1;
-    const belowText = y > last.bottom + 2 && y <= box.bottom; // the answer wrapped onto its own row
-    return onTextRow || belowText ? div : null;
+  // ---------- name chips ----------
+  let chipSig = '';
+  function renderChips() {
+    const list = [...page.vars.values()];
+    const sig = JSON.stringify(list.map(v => [v.name, v.value]));
+    if (sig === chipSig) return;
+    chipSig = sig;
+    els.vars.hidden = !list.length;
+    els.vars.textContent = '';
+    for (const v of list) {
+      const b = document.createElement('button');
+      b.className = 'chip';
+      b.dataset.name = v.name;
+      const n = document.createElement('span');
+      n.className = 'chip-name';
+      n.textContent = v.name;
+      const val = document.createElement('span');
+      val.className = 'chip-val';
+      val.textContent = fmt.result(v.value);
+      b.append(n, val);
+      els.vars.appendChild(b);
+    }
   }
-  let pendingAnswer = null;
-  els.note.addEventListener('pointerdown', e => {
-    const div = answerAt(e.clientX, e.clientY);
-    pendingAnswer = div ? { div, x: e.clientX, y: e.clientY } : null;
+  els.vars.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.target.closest('.chip')) e.preventDefault(); });
+  els.vars.addEventListener('click', e => {
+    const c = e.target.closest('.chip');
+    if (c) insertName(c.dataset.name);
   });
-  // Stop the tap from moving the cursor onto the answer.
-  els.note.addEventListener('touchstart', e => { if (pendingAnswer) e.preventDefault(); }, { passive: false });
-  els.note.addEventListener('mousedown', e => { if (pendingAnswer) e.preventDefault(); });
-  els.note.addEventListener('pointerup', e => {
-    const h = pendingAnswer;
-    pendingAnswer = null;
-    if (!h || Math.hypot(e.clientX - h.x, e.clientY - h.y) > 10) return;
-    const before = { text, sel: sel.slice() };
-    if (afterAnswer()) newLine();
-    insert(E.rawString(+h.div.dataset.v));
-    pushUndo(before, 'key');
-    changed();
-    ensureFocus();
-  });
-  els.note.addEventListener('pointercancel', () => { pendingAnswer = null; });
 
   // ---------- keypad ----------
   const downKeys = new Map();
@@ -462,7 +505,7 @@
     else ensureFocus();
   }
 
-  // ---------- ABC: the iPhone keyboard for typing words ----------
+  // ---------- ABC: the iPhone keyboard for typing words and names ----------
   let switching = false;
   function setTextMode(on) {
     syncSel();
@@ -545,12 +588,17 @@
     const a = fx.rates[from], b = fx.rates[to];
     return a > 0 && b > 0 ? b / a : null;
   }
+  const round2 = v => Math.round(v * 100) / 100;
+  function convertAmount(v, conv) {
+    const [from, to] = conv.split('>');
+    const r = rate(from, to);
+    return r == null ? null : round2(v * r);
+  }
   const moneyFmts = {};
   function money(v, cur) {
     const f = moneyFmts[cur] || (moneyFmts[cur] = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }));
     return f.format(v).replace('-', '−');
   }
-  const round2 = v => Math.round(v * 100) / 100;
 
   function freshness(age) {
     const m = Math.floor(age / MIN), h = Math.floor(age / HOUR), d = Math.floor(age / DAY);
@@ -581,7 +629,7 @@
     if (fxBusy) return;
     if (!force && fx && Date.now() - fx.fetchedAt < HOUR) return;
     fxBusy = true;
-    updateResults();
+    refresh();
     let ok = false;
     for (const src of FX_SOURCES) {
       try {
@@ -603,7 +651,7 @@
       }
     }
     fxBusy = false;
-    updateResults();
+    refresh();
     if (!quiet) toast(ok ? 'Rate updated' : 'Couldn’t reach the rate service — using the saved rate');
   }
   els.fxBar.addEventListener('click', () => refreshFx({ force: true, quiet: false }));
@@ -624,7 +672,7 @@
     }
     el.classList.toggle('warn', !els.dot.hidden);
     els.diag.textContent = `Screen ${screen.width}×${screen.height} · view ${window.innerWidth}×${window.innerHeight} · ` +
-      `${navigator.standalone ? 'Home Screen app' : 'browser'} · version 2`;
+      `${navigator.standalone ? 'Home Screen app' : 'browser'} · version 3`;
   }
   function openSheet() {
     renderBackupLine();
@@ -712,11 +760,11 @@
   document.addEventListener('gesturestart', e => e.preventDefault());
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) saveNow();
-    else { refreshFx(); updateResults(); }
+    else { refreshFx(); refresh(); }
   });
   window.addEventListener('pagehide', saveNow);
   window.addEventListener('online', () => refreshFx());
-  setInterval(() => { if (!document.hidden) updateResults(); }, MIN); // keeps "updated N min ago" current
+  setInterval(() => { if (!document.hidden) refresh(); }, MIN); // keeps "updated N min ago" current
 
   sizeApp();
   render();

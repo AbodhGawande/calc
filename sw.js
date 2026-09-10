@@ -1,6 +1,6 @@
 /* Offline support: the whole app is cached on install and served from the cache.
    Bump VERSION on every deploy — that is what makes phones pick up the new files. */
-const VERSION = 'calc-v2';
+const VERSION = 'calc-v3';
 const ASSETS = [
   './',
   './index.html',

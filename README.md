@@ -17,7 +17,10 @@ HTML/CSS/JS, no build step, no dependencies.
 - **Brackets** `(` `)` go anywhere. A missing `)` is added for you, and `2(3+4)` multiplies.
 - **Calculator habits:** a number typed after an answer starts a new line. An operator after an answer
   continues the same line, adding brackets when needed (`50+25+60=` then `×2` → `(50+25+60)×2=`).
-- **Tap an orange answer** to insert it at the cursor.
+- **Names:** type a word after the `=` to name the answer: `50+50=rent` shows `50+50= 100 → rent`. Lines below
+  can use it (`rent×12=`); editing the original line updates them all, and naming again further down takes over from
+  there. Names are one word starting with a letter; capitals don't matter. Names show in blue, and a row of
+  name chips above the keypad inserts a name at the cursor (after a number it adds `×`).
 - **ABC** brings up the iPhone keyboard for words. The orange calculator button (top right) brings the keypad back.
 - **$₹** turns the current line into a conversion (`100 $→₹=`). Tap again to flip the direction.
   Rates come from the ECB via Frankfurter, with ExchangeRate-API as a fallback. The last rate is saved for
