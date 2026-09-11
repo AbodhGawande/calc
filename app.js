@@ -13,8 +13,7 @@
   const MIN = 60000, HOUR = 60 * MIN, DAY = 24 * HOUR;
   const OPS = '+−×÷-*/';
   const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
-  const CONV = /\$→₹|₹→\$/;
-  const APP_VERSION = 11; // shown at the bottom of the help page; bump together with VERSION in sw.js
+  const APP_VERSION = 12; // shown at the bottom of the help page; bump together with VERSION in sw.js
   const HELP_VERSION = 6; // bump to show the help page once after an update that changes how things work
   const FS_MIN = 22, FS_MAX = 36; // page text size: starts at FS_MAX, never smaller than FS_MIN
 
@@ -54,7 +53,7 @@
   const modern = E.modernizeNames(text); // older "→ name" / "=name" lines → "… = name" (or "200 var")
   if (modern !== text) { text = modern; updatedAt = Date.now(); notice = notice || 'Named lines now read “= name”'; }
   let sel = saved && Array.isArray(saved.sel) ? saved.sel.map(n => Math.max(0, Math.min(text.length, n | 0))) : [text.length, text.length];
-  const settings = Object.assign({ conv: '$→₹', helpSeen: 0 }, load(K.settings, {}));
+  const settings = Object.assign({ helpSeen: 0 }, load(K.settings, {}));
   let fx = load(K.fx, null);
   let backup = load(K.backup, null);
   let fxBusy = false;
@@ -147,7 +146,7 @@
   // text → DOM, touching only lines whose pieces changed. Returns true if any line was rebuilt.
   function render() {
     const lines = text.split('\n');
-    page = E.evaluatePage(lines, convertAmount);
+    page = E.evaluatePage(lines, { rates: fx && fx.rates, now: new Date() });
     const note = els.note;
     let rebuilt = false, anyConv = false;
     if (![...note.childNodes].every(n => n.nodeName === 'DIV')) { note.textContent = ''; rebuilt = true; }
@@ -158,7 +157,7 @@
       if (div.className !== 'ln') div.className = 'ln';
       const segs = segmentsFor(line, page.lines[i]);
       if (!lineMatches(div, segs)) { buildLine(div, segs); rebuilt = true; }
-      if (CONV.test(line)) anyConv = true;
+      if (page.lines[i].conv && page.lines[i].conv.currency) anyConv = true;
     });
     relayout();
     renderChips();
@@ -202,16 +201,22 @@
   }
 
   // ---------- answers column ----------
+  // How a line's value reads: "700", "31.07 mi", "₹9,500.00", "1:30 AM IST +1".
+  function resultText(info) {
+    const r = info.result;
+    if (!r) return fmt.short(info.value);
+    if (r.kind === 'time') return r.text;
+    if (r.kind === 'money') return money(r.value, r.unit);
+    return fmt.short(r.value) + ' ' + r.unit;
+  }
   function answerFor(info) {
     switch (info.status) {
       case 'answer':
       case 'live':
-        return {
-          text: info.conv ? money(info.value, info.conv.split('>')[1]) : fmt.short(info.value),
-          value: info.value,
-          live: info.status === 'live',
-        };
-      case 'unknown': return { text: '?', dim: true, why: 'This line can’t be worked out. Check the brackets, and that its names are set on a line above.' };
+        return { text: resultText(info), value: info.value, live: info.status === 'live' };
+      case 'unknown':
+        if (info.conv) return { text: '?', dim: true, why: 'Those two units don’t go together. Try km to mi, lb to kg, f to c…' };
+        return { text: '?', dim: true, why: 'This line can’t be worked out. Check the brackets, and that its names are set on a line above.' };
       case 'error': return { text: 'Error', dim: true, why: 'Can’t divide by zero.' };
       case 'norate': return { text: '—', dim: true, why: 'No exchange rate yet. Go online once to download it.' };
       default: return null;
@@ -249,7 +254,7 @@
   function openMenu(pill) {
     const i = +pill.dataset.line;
     const ans = answerFor(page.lines[i]);
-    if (!ans || ans.dim) return;
+    if (!ans || ans.dim || ans.value == null) return; // a time can't be used or named
     closeMenu();
     menuLine = i;
     menuValue = ans.value;
@@ -449,28 +454,21 @@
     insert('');
   }
 
-  // $₹ key: make the caret's line a conversion, or flip the direction of one that already is.
-  function convert() {
+  // The ⇄ sheet writes a finished conversion line ("10 lb to kg") on its own line at the cursor.
+  function insertLine(str) {
+    syncSel();
+    const before = { text, sel: sel.slice() };
     const { s, e, line } = lineAt(sel[1]);
-    const all = [...line.matchAll(/\$→₹|₹→\$/g)];
-    const def = E.defOf(line);
-    let next;
-    if (all.length) {
-      const m = all[all.length - 1];
-      const flipped = m[0] === '$→₹' ? '₹→$' : '$→₹';
-      next = line.slice(0, m.index) + flipped + line.slice(m.index + m[0].length);
-      settings.conv = flipped;
-    } else {
-      const head = (def ? line.slice(0, def.eq) : line.replace(/\s*=\s*$/, '')).replace(/\s+$/, '');
-      if (!/[\d\p{L}]/u.test(head)) { toast('Type an amount first'); return; }
-      next = head + ' ' + settings.conv + (def ? ' ' + line.slice(def.eq) : '=');
-    }
-    save(K.settings, settings);
-    setLine(s, e, next);
-    if (!fx) refreshFx();
+    if (line.trim()) { sel = [e, e]; insert('\n'); }
+    else sel = [s, e];
+    insert(str);
+    pushUndo(before, 'key');
+    changed();
+    ensureFocus();
   }
 
   function press(k) {
+    if (k === 'conv') { closeMenu(); syncSel(); window.ConvertSheet.open(); return; }
     closeMenu();
     syncSel();
     const before = { text, sel: sel.slice() };
@@ -484,7 +482,6 @@
     else if (k === '=') equals();
     else if (k === 'back') { kind = 'back'; backspace(); }
     else if (k === 'enter') insert('\n');
-    else if (k === 'fx') convert();
     else return;
     const textChanged = text !== before.text;
     if (textChanged) pushUndo(before, kind);
@@ -520,7 +517,7 @@
     if (line == null || !info) return;
     const value = info.value != null && isFinite(info.value) ? info.value : null; // the running total on multi-line sums
     if (value == null) { toast('Nothing to name on this line — type a number or a calculation first'); return; }
-    const shown = info.conv ? money(value, info.conv.split('>')[1]) : fmt.short(value);
+    const shown = resultText(info);
     const def = E.defOf(line);
     nameTarget = { idx, line };
     els.nbValue.textContent = shown;
@@ -813,12 +810,6 @@
     const a = fx.rates[from], b = fx.rates[to];
     return a > 0 && b > 0 ? b / a : null;
   }
-  const round2 = v => Math.round(v * 100) / 100;
-  function convertAmount(v, conv) {
-    const [from, to] = conv.split('>');
-    const r = rate(from, to);
-    return r == null ? null : round2(v * r);
-  }
   const moneyFmts = {};
   function money(v, cur) {
     const f = moneyFmts[cur] || (moneyFmts[cur] = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }));
@@ -880,6 +871,14 @@
     if (!quiet) toast(ok ? 'Rate updated' : 'Couldn’t reach the rate service — using the saved rate');
   }
   els.fxBar.addEventListener('click', () => refreshFx({ force: true, quiet: false }));
+
+  window.ConvertSheet.init({
+    rates: () => (fx ? fx.rates : null),
+    rateAge: () => (fx ? Date.now() - fx.fetchedAt : null),
+    refreshRates: () => refreshFx({ force: true, quiet: false }),
+    money, short: v => fmt.short(v), insertLine, toast,
+    onClose: () => { sizeApp(); relayout(); ensureFocus(); },
+  });
 
   // ---------- backup ----------
   function updateDot() {

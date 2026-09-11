@@ -134,7 +134,6 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .key.op { background: var(--op); font-size: calc(var(--kh) * 0.6); }
 .key.op.down { background: var(--op-down); }
 .key svg { height: 44%; width: auto; }
-.fxkey { font-size: calc(var(--kh) * 0.34) !important; }
 /* new line: a lighter grey than the other grey keys so it's easy to find */
 .key.fn.enter { background: #9c9ca1; }
 .key.fn.enter.down { background: #c4c4c9; }
@@ -291,3 +290,46 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .h-name { color: var(--name); font-weight: 600; }
 .h-ex { white-space: nowrap; color: var(--text); }
 .help-version { padding: 20px 0 4px; text-align: center; font-size: 13px; color: #636366; }
+
+/* ---------- conversions sheet ---------- */
+.conv-body { padding-top: 4px; }
+.c-title { margin: 18px 0 6px; font-size: 13px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--dim); }
+.c-row { display: flex; align-items: center; gap: 6px; padding: 6px 0; }
+.c-side { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; }
+.c-in {
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  outline: none;
+  background: #2c2c2e;
+  color: var(--op);
+  font: 500 19px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  text-align: right;
+  caret-color: var(--op);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.c-in.narrow { width: 74px; flex: none; padding: 0 7px; font-size: 17px; }
+.c-in:focus { box-shadow: 0 0 0 1.5px var(--op); }
+.c-in::placeholder { color: #48484a; }
+.c-in[type="time"] { text-align: left; color-scheme: dark; }
+.c-unit { flex: none; min-width: 34px; font-size: 15px; color: #d1d1d6; }
+.c-sel {
+  flex: none;
+  max-width: 96px;
+  height: 42px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 10px;
+  background: #3a3a3c;
+  color: var(--text);
+  font: 500 15px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+.c-arrow { flex: none; width: 22px; text-align: center; color: var(--dim); font-size: 17px; }
+.c-add { flex: none; width: 34px; height: 34px; border-radius: 17px; background: #3a3a3c; color: var(--op); font-size: 22px; line-height: 34px; text-align: center; }
+.c-note { font-size: 12px; color: var(--dim); padding: 0 0 4px; }
+.c-note.stale { color: var(--op); }
+.c-shift { flex: none; font-size: 13px; color: var(--op); width: 22px; }

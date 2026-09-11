@@ -1,11 +1,13 @@
 /* Offline support: the whole app is cached on install and served from the cache.
    Bump VERSION on every deploy — that is what makes phones pick up the new files. */
-const VERSION = 'calc-v11'; // keep the number in step with APP_VERSION in app.js
+const VERSION = 'calc-v12'; // keep the number in step with APP_VERSION in app.js
 const ASSETS = [
   './',
   './index.html',
   './style.css',
+  './units.js',
   './engine.js',
+  './convert.js',
   './app.js',
   './manifest.webmanifest',
   './icons/apple-touch-icon.png',

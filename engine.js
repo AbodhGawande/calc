@@ -10,12 +10,15 @@
      Lines below can use the names; a name set again further down takes over from there.
    - A line that starts with + − × ÷ carries on from the line above; × and ÷ apply to that running total.
      A blank line, or a line that starts with a number or a word, begins a new calculation.
-   - "$→₹" / "₹→$" just before the end converts the value. The older "→ name" form still works.
+   - Conversions are typed as "50 km to mi", "5 ft 10 in to cm", "72 f to c", "100 $ to ₹", "3 pm cst to ist"
+     (see units.js). The answer carries its unit and can be named or continued like any other.
+     The old "$→₹" / "₹→$" token before "=" still converts. The older "→ name" form still works.
    - While a line is unfinished, a "-" or "/" typed between digits with no spaces (2024-25, 10/9, 555-1234)
      is not treated as maths; press "=" to calculate it anyway. The keypad's − and ÷ always count. */
 (function (root) {
   'use strict';
 
+  const U = typeof module !== 'undefined' && module.exports ? require('./units.js') : root.CalcUnits;
   const SYMBOL = { '+': '+', '-': '−', '*': '×', '/': '÷' };
   const CONV_AT_END = /(\$→₹|₹→\$)\s*$/;
   const WORD_START = /[\p{L}_]/u;
@@ -213,8 +216,18 @@
     let conv = null;
     const c = CONV_AT_END.exec(body);
     if (c) {
-      conv = c[1] === '$→₹' ? 'USD>INR' : 'INR>USD';
+      // The old "$→₹" token: the maths before it is the amount (parts are filled in once it's worked out).
+      conv = c[1] === '$→₹' ? { legacy: true, from: 'USD', to: 'INR', currency: true } : { legacy: true, from: 'INR', to: 'USD', currency: true };
       body = body.slice(0, c.index);
+    }
+    const base = { conv, def, finished, exprEnd: body.length, eqIndex: def ? def.eq : finished ? line.search(/=\s*$/) : -1 };
+
+    // "50 km to mi", "3 pm cst to ist": a typed conversion is a line of its own.
+    const tc = !conv && !cont ? U.parseConversion(body, vars) : null;
+    if (tc) {
+      const convInfo = Object.assign(tc, { currency: !tc.zone && U.isCurrency(tc.from) });
+      const used = tc.isName ? [{ t: 'num', v: tc.parts[0][0], isVar: true, pos: tc.start, end: tc.start + tc.amtText.length, sp: false }] : [];
+      return Object.assign(base, { conv: convInfo, value: tc.zone ? null : tc.parts[0][0], used, exprStart: tc.start, simple: false, operation: true });
     }
     if (!finished && DATE_LIKE.test(body)) return null; // a date or phone number, until "=" says otherwise
     let tokens = dropNotes(tokenize(body, 0, vars));
@@ -222,8 +235,6 @@
       // Still being typed: ignore a trailing operator or "(" so the answer doesn't blink out mid-sum.
       while (tokens.length && (tokens[tokens.length - 1].t === 'op' || tokens[tokens.length - 1].t === '(')) tokens.pop();
     }
-    const base = { conv, def, finished, exprEnd: body.length, eqIndex: def ? def.eq : finished ? line.search(/=\s*$/) : -1 };
-
     if (cont) {
       const carried = running !== null && isFinite(running);
       if (leadOp && tokens.length && tokens[0].t !== 'op') tokens.unshift({ t: 'op', v: leadOp, pos: 0, sp: false });
@@ -299,12 +310,14 @@
 
   // Works down the page. Each line gets:
   //   value   the line's value (the running total for multi-line calculations), converted if it converts
+  //   result  for conversions: { kind: 'unit'|'money'|'time', value, unit, text } from units.js, or null
   //   status  what the answers column shows: 'answer' (finished), 'live' (still being typed — shown slightly dimmed),
   //           'unknown' (finished but can't be worked out), 'error' (e.g. ÷0), 'norate' (no exchange rate), or null
   //   names   [start, end] of the names used in its maths; def = the name it sets after "=" (if it worked)
   //   notes   [start, end] of the words that name a number on this line ("500 food")
-  // convert(value, conv) turns an amount into the other currency (null if no rate).
-  function evaluatePage(lines, convert) {
+  // ctx = { rates: { USD: 1, INR: 95, … } | null, now: Date } for currency and time-zone conversions.
+  function evaluatePage(lines, ctx) {
+    ctx = ctx || {};
     const vars = new Map();
     // Setting a name moves it to the end, so the most recently set names come last.
     const setVar = (name, value) => { const k = name.toLowerCase(); vars.delete(k); vars.set(k, { name, value }); };
@@ -318,34 +331,43 @@
       const a = blank ? null : lineCalc(line, vars, running, cont, leadOp);
       pendingOp = blank ? null : trailingOp(line);
       let value = a ? a.value : null;
-      if (a && a.conv && value !== null && isFinite(value)) value = convert ? convert(value, a.conv) : null;
+      let result = null;
+      if (a && a.conv) {
+        const cv = a.conv;
+        if (cv.zone) result = U.convertTime(cv, ctx);
+        else if (cv.legacy) result = value !== null && isFinite(value) ? U.convert([[value, cv.from]], cv.to, ctx) : null;
+        else result = U.convert(cv.parts, cv.to, ctx);
+        value = result ? result.value : null;
+      }
       if (a && a.operation) blockOp = true;
       running = value;
       const defSyntax = defOf(line);
       const names = a ? a.used.filter(t => t.isVar).map(t => [t.pos, t.end]) : [];
       const finished = !blank && isFinished(line);
-      // Words after numbers name them — except on a date/phone-number line that isn't being treated as maths.
+      // Words after numbers name them — except on a conversion ("50 km to mi") or a date/phone-number line.
       const body = defSyntax ? line.slice(0, defSyntax.eq) : line.replace(/=\s*$/, '');
-      const notes = blank || (!finished && DATE_LIKE.test(body)) ? [] : noteNames(tokenize(body, 0, vars));
+      const notes = blank || (a && a.conv) || (!finished && DATE_LIKE.test(body)) ? [] : noteNames(tokenize(body, 0, vars));
       const defined = a && defSyntax && value !== null && isFinite(value) ? defSyntax : null;
       for (const n of notes) setVar(n.name, n.value);
       if (defined) setVar(defSyntax.name, value);
       out.push({
-        a, value, conv: a ? a.conv : null, def: defined, defSyntax, names, notes: notes.map(n => [n.pos, n.end]),
+        a, value, result, conv: a ? a.conv : null, def: defined, defSyntax, names, notes: notes.map(n => [n.pos, n.end]),
         finished, wantsAnswer: finished, cont, blockOp,
       });
     });
     out.forEach((o, i) => {
       o.last = !out[i + 1] || !out[i + 1].cont; // the last line of its calculation
       const a = o.a;
+      const has = o.result ? (o.result.kind === 'time' || (o.result.value != null && isFinite(o.result.value)))
+        : o.value != null && isFinite(o.value);
       if (o.finished) {
         if (!a) o.status = 'unknown';
-        else if (!isFinite(a.value)) o.status = 'error';
-        else if (a.conv && o.value == null) o.status = 'norate';
-        else if (a.simple) o.status = null; // "200 → var" — the number is already there
+        else if (a.conv && !o.result) o.status = a.conv.currency ? 'norate' : 'unknown';
+        else if (!a.conv && !isFinite(a.value)) o.status = 'error';
+        else if (a.simple) o.status = null; // "200 var" — the number is already there
         else o.status = 'answer';
       } else {
-        o.status = o.last && o.blockOp && a && !a.simple && o.value != null && isFinite(o.value) ? 'live' : null;
+        o.status = o.last && o.blockOp && a && !a.simple && has ? 'live' : null;
       }
     });
     return { lines: out, vars };

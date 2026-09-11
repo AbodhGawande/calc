@@ -53,10 +53,10 @@ test('lines: only lines ending in "=" have an answer, and words are labels', () 
 
 test('conversion lines', () => {
   const a = E.analyzeLine('1,283.5 $→₹=');
-  assert.equal(a.conv, 'USD>INR');
+  assert.deepEqual([a.conv.from, a.conv.to, a.conv.currency], ['USD', 'INR', true]);
   assert.equal(a.value, 1283.5);
   const b = E.analyzeLine('Rent 75+25 ₹→$ =');
-  assert.equal(b.conv, 'INR>USD');
+  assert.deepEqual([b.conv.from, b.conv.to], ['INR', 'USD']);
   assert.equal(b.value, 100);
 });
 
@@ -80,6 +80,7 @@ test('a calculation never starts part-way through, so unknown words give no answ
 });
 
 const values = page => page.lines.map(l => l.value);
+const RATES = { rates: { USD: 1, INR: 95, EUR: 0.9 }, now: new Date('2026-09-11T15:00:00Z') };
 
 test('naming answers and using the names below', () => {
   const p = E.evaluatePage(['50+50=rent', 'rent×12= yearly', 'yearly÷4=', 'Hotel×12=', '2rent=', 'rent(3)=', '200= Rent2']);
@@ -102,9 +103,9 @@ test('names: order, redefinition, capitals, highlighting', () => {
 });
 
 test('naming a conversion stores the converted amount', () => {
-  const p = E.evaluatePage(['100 $→₹=inr', 'inr÷2='], (v, c) => (c === 'USD>INR' ? v * 95 : v / 95));
+  const p = E.evaluatePage(['100 $→₹=inr', 'inr÷2='], RATES);
   assert.deepEqual(values(p), [9500, 4750]);
-  assert.equal(E.evaluatePage(['100 $→₹=inr'], () => null).lines[0].def, null);  // no rate yet
+  assert.equal(E.evaluatePage(['100 $→₹=inr'], { rates: null }).lines[0].def, null);  // no rate yet
 });
 
 test('continuing a line that uses names', () => {
@@ -120,7 +121,7 @@ test('arrow names', () => {
   assert.deepEqual(values(p), [700, 1400, 200, 201]);
   assert.equal(p.lines[2].a.simple, true);   // a plain number needs no answer shown
   assert.equal(p.lines[0].a.simple, false);
-  assert.equal(E.evaluatePage(['100 $→₹ → inr'], v => v * 95).lines[0].value, 9500);
+  assert.equal(E.evaluatePage(['100 $→₹ → inr'], RATES).lines[0].value, 9500);
 });
 
 test('naming a line from the name box', () => {
@@ -213,7 +214,7 @@ test('live answers while typing', () => {
   assert.deepEqual(statuses(E.evaluatePage(['5/0'])), [null]);                          // no live errors
   const named = E.evaluatePage(['9 → rent', 'rent×']);
   assert.deepEqual(named.lines[1].names, [[0, 4]]);                                     // still highlighted mid-typing
-  assert.deepEqual(statuses(E.evaluatePage(['100 $→₹'], v => v * 95)), ['live']);
+  assert.deepEqual(statuses(E.evaluatePage(['100 $→₹'], RATES)), ['live']);
 });
 
 const varList = page => [...page.vars.values()].map(v => [v.name, v.value]);
@@ -261,4 +262,18 @@ test('formatting', () => {
   assert.equal(E.makeFormatter('en-IN').result(1234567), '12,34,567');
   assert.equal(E.rawString(0.1 + 0.2), '0.3');
   assert.equal(E.rawString(1e-7), '0.0000001');
+});
+
+test('typed conversions on the page', () => {
+  const p = E.evaluatePage(['50 km to mi', 'Trip 50km in miles = trip', 'trip+10=', '72 f to c', '100 $ to ₹', '3 pm cst to ist', '5 km to kg=', '100 usd to gbp=', 'trip km to mi'], RATES);
+  const r = p.lines.map(l => l.result && (l.result.text || Math.round(l.result.value * 100) / 100 + ' ' + l.result.unit));
+  assert.deepEqual(r, ['31.07 mi', '31.07 mi', null, '22.22 °C', '9500 INR', '1:30 AM IST +1', null, null, '19.31 mi']);
+  assert.deepEqual(statuses(p), ['live', 'answer', 'answer', 'live', 'live', 'live', 'unknown', 'norate', 'live']);
+  assert.deepEqual(values(p).slice(0, 3).map(v => Math.round(v * 100) / 100), [31.07, 31.07, 41.07]);
+  assert.deepEqual(varList(p), [['trip', p.lines[1].value]]);           // "km" and "mi" never become names
+  assert.deepEqual(p.lines[8].names, [[0, 4]]);                         // the name used as the amount is blue
+  assert.equal(p.lines[4].conv.currency, true);
+  assert.equal(p.lines[0].conv.currency, false);
+  assert.equal(p.lines[5].value, null);                                 // a time isn't a number
+  assert.deepEqual(values(E.evaluatePage(['50 km to mi', '+10'], RATES)).map(v => Math.round(v * 100) / 100), [31.07, 41.07]);
 });
