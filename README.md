@@ -55,6 +55,7 @@ end of the page. A red dot on the Backup button means a backup is overdue.
 - `tools/make_icons.py`: regenerates the icons (needs Pillow)
 
 ## Deploying a change
-Bump `VERSION` in `sw.js` (e.g. `calc-v6`) with every change, otherwise phones keep the cached old version.
+Bump `VERSION` in `sw.js` (e.g. `calc-v10`) with every change, otherwise phones keep the cached old version, and
+set `APP_VERSION` in `app.js` to the same number (it's shown at the bottom of the help page).
 Commit and push; GitHub Pages redeploys in about a minute, and the app reloads itself into the new version the
 next time it's opened.

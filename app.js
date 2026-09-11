@@ -14,6 +14,7 @@
   const OPS = '+−×÷-*/';
   const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
   const CONV = /\$→₹|₹→\$/;
+  const APP_VERSION = 9; // shown at the bottom of the help page; bump together with VERSION in sw.js
   const HELP_VERSION = 6; // bump to show the help page once after an update that changes how things work
   const FS_MIN = 22, FS_MAX = 36; // page text size: starts at FS_MAX, never smaller than FS_MIN
 
@@ -784,6 +785,7 @@
   }
   $('helpBtn').addEventListener('click', openHelp);
   $('helpDone').addEventListener('click', closeHelp);
+  $('helpVersion').textContent = 'Calc · version ' + APP_VERSION;
 
   // ---------- currency ----------
   // Primary: ECB reference rates via Frankfurter. Fallback: ExchangeRate-API's open endpoint. Both keyless.
@@ -891,7 +893,7 @@
     }
     el.classList.toggle('warn', !els.dot.hidden);
     els.diag.textContent = `Screen ${screen.width}×${screen.height} · view ${window.innerWidth}×${window.innerHeight} · ` +
-      `${navigator.standalone ? 'Home Screen app' : 'browser'} · version 6`;
+      `${navigator.standalone ? 'Home Screen app' : 'browser'} · version ${APP_VERSION}`;
   }
   function openSheet() {
     closeMenu();

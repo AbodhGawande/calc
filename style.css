@@ -286,3 +286,4 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .h-ico.g { background: #2c2c2e; color: #636366; }
 .h-name { color: var(--name); font-weight: 600; }
 .h-ex { white-space: nowrap; color: var(--text); }
+.help-version { padding: 20px 0 4px; text-align: center; font-size: 13px; color: #636366; }
