@@ -14,8 +14,10 @@ HTML/CSS/JS, no build step, no dependencies.
 - **One running page.** Each line is a calculation. Answers appear on the right as you type (30% dimmer) once
   there are two numbers and an operator; `=` finishes the line (the answer turns solid). The trash button clears
   the page (Undo brings it back). The text starts large and shrinks as the page fills, never below 22px.
-- **Words:** words before the maths are a label ("Hotel (120+95)×2"); a word right after a number is a note about it
-  (`700 rent + 500 food` = 1,200). Typing a letter straight after a number adds the space for you.
+- **Words:** words before the maths are a label ("Hotel (120+95)×2"). A word right after a number is left out of the
+  maths and names that number (`700 rent + 500 food` = 1,200, and rent = 700, food = 500); small words like "for"
+  are skipped. A word after `=` names the total (`… = expense`). Typing a letter straight after a number or `=` adds
+  the space for you.
 - **Several lines:** a line starting with `+ − × ÷` carries on from the line above (× and ÷ apply to the running
   total); the total shows on the last line. A blank line or a line starting with a number or word starts afresh.
 - **Edit anything.** Tap anywhere to place the cursor and change a number; answers update instantly.
@@ -27,11 +29,11 @@ HTML/CSS/JS, no build step, no dependencies.
 - **Answers** sit in a column on the right as orange tags. Tap one for **Use** (puts the number on your line, or a new
   line if that one is finished), **Name**, or **Copy**. A plain number needs no answer; a grey `?` means the line
   can't be worked out (tap it for why).
-- **Names:** tap **→ Name** above the keypad (names the line the cursor is on, even a plain `200`) or an answer's
-  **Name**, and type a name. The line reads `500+200 → rent`. Lines below can use it (`rent×12=`); editing the original
-  line updates them all, and naming again further down takes over from there. Names are one word starting with a
-  letter; capitals don't matter. Names show in blue; their chips above the keypad insert them (after a number, `×` is
-  added). The older `500+200=rent` form still works and is shown the new way.
+- **Names:** lines below can use a name (`rent×12`); editing the original line updates them all, and the same name
+  set again further down takes over from there. Names are one word starting with a letter; capitals don't matter.
+  Names show in blue; their chips above the keypad (most recent first) insert them (after a number, `×` is added).
+  **Name…** above the keypad, or an answer's **Name**, names a line without the keyboard (writes `… = rent`, or
+  `200 rent` for a plain number). Older `→ rent` / `=rent` lines are rewritten the current way on launch.
 - **Help:** the `?` button in the top bar opens a short guide. It also opens once after an update that changes how
   things work (`HELP_VERSION` in `app.js`).
 - **ABC** brings up the iPhone keyboard for words. The orange calculator button (top right) brings the keypad back.

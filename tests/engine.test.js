@@ -124,14 +124,15 @@ test('arrow names', () => {
 });
 
 test('naming a line from the name box', () => {
-  assert.equal(E.nameLine('500+200=', 'rent'), '500+200 → rent');
-  assert.equal(E.nameLine('200', 'var'), '200 → var');
-  assert.equal(E.nameLine('500+200 → rent', 'house'), '500+200 → house');
-  assert.equal(E.nameLine('500+200 → rent', ''), '500+200=');
+  assert.equal(E.nameLine('500+200=', 'rent'), '500+200 = rent');
+  assert.equal(E.nameLine('200', 'var'), '200 var');
+  assert.equal(E.nameLine('500+200 → rent', 'house'), '500+200 = house');
+  assert.equal(E.nameLine('500+200 = rent', ''), '500+200=');
   assert.equal(E.nameLine('200 → var', ''), '200');
-  assert.equal(E.nameLine('200=var', 'x'), '200 → x');
-  assert.equal(E.nameLine('100 $→₹=', 'inr'), '100 $→₹ → inr');
-  assert.equal(E.modernizeNames('200=var\n5+5=\nTea 5+5=ok'), '200 → var\n5+5=\nTea 5+5 → ok');
+  assert.equal(E.nameLine('200=var', 'x'), '200 x');
+  assert.equal(E.nameLine('100 $→₹=', 'inr'), '100 $→₹ = inr');
+  assert.equal(E.modernizeNames('200=var\n5+5=\nTea 5+5=ok\n500+200 → rent\n200 → var\n500+200 = rent'),
+    '200 var\n5+5=\nTea 5+5 = ok\n500+200 = rent\n200 var\n500+200 = rent');
   assert.equal(E.openValue('200').value, 200);
   assert.equal(E.openValue('50+25').value, 75);
   assert.equal(E.openValue('words'), null);
@@ -191,6 +192,28 @@ test('live answers while typing', () => {
   const named = E.evaluatePage(['9 → rent', 'rent×']);
   assert.deepEqual(named.lines[1].names, [[0, 4]]);                                     // still highlighted mid-typing
   assert.deepEqual(statuses(E.evaluatePage(['100 $→₹'], v => v * 95)), ['live']);
+});
+
+const varList = page => [...page.vars.values()].map(v => [v.name, v.value]);
+
+test('a word after a number names it; a word after "=" names the total', () => {
+  let p = E.evaluatePage(['500 food + 500 rent', 'food+rent=']);
+  assert.deepEqual(values(p), [1000, 1000]);
+  assert.deepEqual(varList(p), [['food', 500], ['rent', 500]]);
+  assert.deepEqual(p.lines[0].notes, [[4, 8], [15, 19]]);
+  p = E.evaluatePage(['500 rent + 500 food = expense', 'expense×2=']);
+  assert.deepEqual(values(p), [1000, 2000]);
+  assert.deepEqual(varList(p), [['rent', 500], ['food', 500], ['expense', 1000]]);
+  assert.deepEqual(varList(E.evaluatePage(['500 for food'])), [['food', 500]]);        // small words skipped
+  assert.deepEqual(varList(E.evaluatePage(['500 food items'])), [['food', 500]]);      // one name per number
+  p = E.evaluatePage(['500 food', '200 food', 'food=']);                                // latest wins
+  assert.deepEqual(values(p), [500, 200, 200]);
+  assert.deepEqual(varList(E.evaluatePage(['500 food', '9 rent', '200 food'])), [['rent', 9], ['food', 200]]);
+  assert.equal(E.evaluatePage(['500 food + food']).lines[0].value, null);              // only lines below
+  assert.equal(E.evaluatePage(['2024-25 budget', 'budget=']).lines[1].value, null);    // dates don't name
+  assert.equal(E.evaluatePage(['10% gst']).vars.size, 0);                              // only plain numbers
+  p = E.evaluatePage(['700', '+500 food', '+20 tip = sum', 'food+tip=']);               // works in multi-line sums
+  assert.deepEqual(values(p), [700, 1200, 1220, 520]);
 });
 
 test('version 1 history becomes lines', () => {

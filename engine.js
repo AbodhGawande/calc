@@ -5,11 +5,12 @@
    - Answers show as you type once a line (or a multi-line calculation) has two numbers and an operator.
      "=" finishes a line. A plain number on its own shows no answer.
    - Words are allowed. Words before the maths are a label ("Hotel (120+95)×2"); a word right after a number
-     is a note about that number ("700 rent + 500 food" = 1,200). A word where a number is expected is a name.
+     is left out of the maths ("700 rent + 500 food" = 1,200) and NAMES that number (rent = 700, food = 500),
+     skipping small words ("500 for food" names food). A word after "=" names the result ("… = expense").
+     Lines below can use the names; a name set again further down takes over from there.
    - A line that starts with + − × ÷ carries on from the line above; × and ÷ apply to that running total.
      A blank line, or a line that starts with a number or a word, begins a new calculation.
-   - "$→₹" / "₹→$" just before the end converts the value. "→ name" at the end names it ("500+200 → rent");
-     lines below can use the name. The older "500+200=rent" form still works.
+   - "$→₹" / "₹→$" just before the end converts the value. The older "→ name" form still works.
    - While a line is unfinished, a "-" or "/" typed between digits with no spaces (2024-25, 10/9, 555-1234)
      is not treated as maths; press "=" to calculate it anyway. The keypad's − and ÷ always count. */
 (function (root) {
@@ -25,6 +26,9 @@
   const OLD_DEF = /\s*=\s*([\p{L}_][\p{L}\p{N}_]*)\s*$/u;
   const CONT_START = /^\s*[+\-−–×÷*/]/;
   const DATE_LIKE = /\d[-/]\d/;
+  // Small words that never become names: in "500 for food" the name is food.
+  const SMALL_WORDS = new Set(['a', 'an', 'the', 'for', 'on', 'in', 'at', 'of', 'to', 'per', 'each', 'and', 'or',
+    'from', 'with', 'by', 'as', 'is', 'x', 'my', 'our', 'into']);
 
   // Plain-digit string for a computed value, e.g. 0.30000000000000004 -> "0.3".
   function rawString(v) {
@@ -54,8 +58,9 @@
       } else if (WORD_START.test(ch)) {
         let j = i + 1;
         while (j < str.length && WORD_CHAR.test(str[j])) j++;
-        const known = vars && vars.get(str.slice(i, j).toLowerCase());
-        out.push(known ? { t: 'num', v: known.value, isVar: true, pos, end: base + j, sp } : { t: 'bad', word: true, pos, sp });
+        const text = str.slice(i, j);
+        const known = vars && vars.get(text.toLowerCase());
+        out.push(known ? { t: 'num', v: known.value, isVar: true, text, pos, end: base + j, sp } : { t: 'bad', word: true, text, pos, end: base + j, sp });
         i = j;
       } else {
         if (ch === '+') out.push({ t: 'op', v: '+', pos, sp });
@@ -81,6 +86,22 @@
       out.push(t);
       afterOperand = t.t === 'num' || t.t === ')' || t.t === '%';
     }
+    return out;
+  }
+
+  // The names a line sets through its notes: the first real word after each plain number ("500 food" → food = 500).
+  function noteNames(tokens) {
+    const out = [];
+    tokens.forEach((t, i) => {
+      if (t.t !== 'num' || t.isVar) return;
+      for (let j = i + 1; j < tokens.length && (tokens[j].word || tokens[j].isVar); j++) {
+        const w = tokens[j];
+        if (w.isVar && !w.sp) break; // "2rent" glued on is a multiplication, not a name
+        if (SMALL_WORDS.has(w.text.toLowerCase())) continue;
+        out.push({ name: w.text, value: t.v, pos: w.pos, end: w.end });
+        break;
+      }
+    });
     return out;
   }
 
@@ -244,27 +265,39 @@
     return !rest.replace(/[=\s]/g, '');
   }
 
-  // Give a line a name (or take it away with name = ''): "500+200=" + rent → "500+200 → rent".
+  // Give a line a name (or take it away with name = ''): "500+200=" + rent → "500+200 = rent";
+  // a plain number just gets the word after it: "200" + var → "200 var".
   function nameLine(line, name) {
     const def = defOf(line);
     const head = (def ? line.slice(0, def.eq) : line.replace(/\s*=\s*$/, '')).replace(/\s+$/, '');
-    if (name) return head + ' → ' + name;
-    return /^[\d.,]+$/.test(head.trim()) ? head : head + '='; // a plain number goes back to just the number
+    const plain = /^[\d.,]+$/.test(head.trim());
+    if (name) return head + (plain ? ' ' : ' = ') + name;
+    return plain ? head : head + '=';
   }
 
-  // Version 3 wrote names as "200=var"; show them the new way ("200 → var").
+  // Earlier versions wrote names as "200=var" (v3) or "500+200 → rent" (v4–5); write them the current way:
+  // "500+200 = rent", and for a plain number "200 var".
   function modernizeNames(text) {
-    return text.split('\n').map(l => l.replace(OLD_DEF, ' → $1')).join('\n');
+    return text.split('\n').map(line => {
+      const d = defOf(line);
+      if (!d) return line;
+      const head = line.slice(0, d.eq).replace(/\s+$/, '');
+      if (/^[\d.,]+$/.test(head.trim())) return head + ' ' + d.name;
+      return head + ' = ' + d.name;
+    }).join('\n');
   }
 
   // Works down the page. Each line gets:
   //   value   the line's value (the running total for multi-line calculations), converted if it converts
   //   status  what the answers column shows: 'answer' (finished), 'live' (still being typed — shown slightly dimmed),
   //           'unknown' (finished but can't be worked out), 'error' (e.g. ÷0), 'norate' (no exchange rate), or null
-  //   names   [start, end] of the names used in its maths; def = the name it sets (if it worked)
+  //   names   [start, end] of the names used in its maths; def = the name it sets after "=" (if it worked)
+  //   notes   [start, end] of the words that name a number on this line ("500 food")
   // convert(value, conv) turns an amount into the other currency (null if no rate).
   function evaluatePage(lines, convert) {
     const vars = new Map();
+    // Setting a name moves it to the end, so the most recently set names come last.
+    const setVar = (name, value) => { const k = name.toLowerCase(); vars.delete(k); vars.set(k, { name, value }); };
     const out = [];
     let running = null, blockOp = false;
     lines.forEach((line, i) => {
@@ -279,9 +312,16 @@
       const defSyntax = defOf(line);
       const names = a ? a.used.filter(t => t.isVar).map(t => [t.pos, t.end]) : [];
       const finished = !blank && isFinished(line);
+      // Words after numbers name them — except on a date/phone-number line that isn't being treated as maths.
+      const body = defSyntax ? line.slice(0, defSyntax.eq) : line.replace(/=\s*$/, '');
+      const notes = blank || (!finished && DATE_LIKE.test(body)) ? [] : noteNames(tokenize(body, 0, vars));
       const defined = a && defSyntax && value !== null && isFinite(value) ? defSyntax : null;
-      if (defined) vars.set(defSyntax.name.toLowerCase(), { name: defSyntax.name, value });
-      out.push({ a, value, conv: a ? a.conv : null, def: defined, defSyntax, names, finished, wantsAnswer: finished, cont, blockOp });
+      for (const n of notes) setVar(n.name, n.value);
+      if (defined) setVar(defSyntax.name, value);
+      out.push({
+        a, value, conv: a ? a.conv : null, def: defined, defSyntax, names, notes: notes.map(n => [n.pos, n.end]),
+        finished, wantsAnswer: finished, cont, blockOp,
+      });
     });
     out.forEach((o, i) => {
       o.last = !out[i + 1] || !out[i + 1].cont; // the last line of its calculation

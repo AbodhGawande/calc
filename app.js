@@ -14,7 +14,7 @@
   const OPS = '+−×÷-*/';
   const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
   const CONV = /\$→₹|₹→\$/;
-  const HELP_VERSION = 5; // bump to show the help page once after an update that changes how things work
+  const HELP_VERSION = 6; // bump to show the help page once after an update that changes how things work
   const FS_MIN = 22, FS_MAX = 36; // page text size: starts at FS_MAX, never smaller than FS_MIN
 
   // ---------- storage ----------
@@ -50,8 +50,8 @@
       if (text) notice = 'Your earlier calculations are on the page';
     }
   }
-  const modern = E.modernizeNames(text); // "200=var" (version 3) → "200 → var"
-  if (modern !== text) { text = modern; updatedAt = Date.now(); notice = notice || 'Names now show as → name'; }
+  const modern = E.modernizeNames(text); // older "→ name" / "=name" lines → "… = name" (or "200 var")
+  if (modern !== text) { text = modern; updatedAt = Date.now(); notice = notice || 'Named lines now read “= name”'; }
   let sel = saved && Array.isArray(saved.sel) ? saved.sel.map(n => Math.max(0, Math.min(text.length, n | 0))) : [text.length, text.length];
   const settings = Object.assign({ conv: '$→₹', helpSeen: 0 }, load(K.settings, {}));
   let fx = load(K.fx, null);
@@ -103,6 +103,7 @@
   // 'def' = the name this line sets.
   function segmentsFor(line, info) {
     const marks = info.names.map(([s, e]) => [s, e, 'v']);
+    for (const [s, e] of info.notes || []) marks.push([s, e, 'def']); // "500 food": food becomes a name
     const d = info.defSyntax;
     if (d && line[d.eq] === '→') marks.push([d.eq, d.eq + 1, 'arrow']);
     if (info.def) marks.push([info.def.start, info.def.end, 'def']);
@@ -173,14 +174,23 @@
   function fitFont() {
     const lines = text.split('\n');
     if (!measurer) measurer = document.createElement('canvas').getContext('2d');
-    measurer.font = `${FS_MAX}px ${getComputedStyle(els.note).fontFamily}`;
+    const family = getComputedStyle(els.note).fontFamily;
+    const regular = `${FS_MAX}px ${family}`, bold = `600 ${FS_MAX}px ${family}`;
+    const measure = (s, font) => { measurer.font = font; return measurer.measureText(s).width; };
     const width = els.note.clientWidth - 40 - 24; // the page's side margins, and the gap + padding of an answer tag
     let k = 1;
     lines.forEach((line, i) => {
       if (!line) return;
-      const ans = page.lines[i] && answerFor(page.lines[i]);
-      const w = (measurer.measureText(line).width + (ans ? measurer.measureText(ans.text).width : 0)) * 1.04;
-      if (w > 0) k = Math.min(k, width / w);
+      const info = page.lines[i];
+      let w = measure(line, regular);
+      if (info) {
+        // Names are drawn bold, so they take more room.
+        const strong = info.names.concat(info.notes || [], info.def ? [[info.def.start, info.def.end]] : []);
+        for (const [s, e] of strong) w += measure(line.slice(s, e), bold) - measure(line.slice(s, e), regular);
+        const ans = answerFor(info);
+        if (ans) w += measure(ans.text, regular);
+      }
+      k = Math.min(k, width / (w * 1.02));
     });
     const height = els.scroller.clientHeight - 32; // the page's top and bottom margins
     k = Math.min(k, height / (Math.max(lines.length, 1) * FS_MAX * 1.5));
@@ -418,7 +428,8 @@
     const { s, e, line } = lineAt(sel[1]);
     if (/=\s*$/.test(line) || E.defOf(line)) { sel = [e, e]; return; } // already finished: just finish editing
     const body = line.replace(/[\s+\-−×÷*/]+$/, '');
-    if (/[\d\p{L}]/u.test(body)) setLine(s, e, body + '=');
+    // "500+200=" stays tight like a calculator; after a word, space it out: "500 food + 500 rent =".
+    if (/[\d\p{L}]/u.test(body)) setLine(s, e, body + (/\p{L}$/u.test(body) ? ' =' : '='));
   }
 
   function backspace() {
@@ -598,10 +609,10 @@
     text = serialize(els.note);
     const s = readSel();
     if (s) sel = s;
-    // A letter typed straight after a number gets a space before it: "700r" → "700 r" (a note about the 700).
+    // A letter typed straight after a number or "=" gets a space before it: "700r" → "700 r", "=e" → "= e".
     const c = sel[0];
     if (sel[0] === sel[1] && text.length === old.length + 1 &&
-        /\p{L}/u.test(text[c - 1] || '') && /[\d%)]/.test(text[c - 2] || '')) {
+        /\p{L}/u.test(text[c - 1] || '') && /[\d%)=]/.test(text[c - 2] || '')) {
       text = text.slice(0, c - 1) + ' ' + text.slice(c - 1);
       sel = [c + 1, c + 1];
       render();
@@ -634,7 +645,7 @@
   // ---------- chips above the keypad: → Name, then one chip per name ----------
   let chipSig = '';
   function renderChips() {
-    const list = [...page.vars.values()];
+    const list = [...page.vars.values()].reverse(); // most recently set first
     const sig = JSON.stringify(list.map(v => [v.name, v.value]));
     if (sig === chipSig) return;
     chipSig = sig;
@@ -881,7 +892,7 @@
     }
     el.classList.toggle('warn', !els.dot.hidden);
     els.diag.textContent = `Screen ${screen.width}×${screen.height} · view ${window.innerWidth}×${window.innerHeight} · ` +
-      `${navigator.standalone ? 'Home Screen app' : 'browser'} · version 5`;
+      `${navigator.standalone ? 'Home Screen app' : 'browser'} · version 6`;
   }
   function openSheet() {
     closeMenu();
