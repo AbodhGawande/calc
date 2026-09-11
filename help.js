@@ -86,9 +86,9 @@
     body.textContent = '';
     // App name, version and maker at the top.
     const about = el('div', 'help-about');
-    const title = el('div', 'help-title');
-    title.append(el('span', 'help-app', 'Tote'), el('span', 'help-ver', 'version ' + version));
-    about.append(title, el('span', 'help-maker', 'Abodh SG'));
+    const chip = el('span', 'help-chip');
+    chip.append(el('span', 'help-app', 'Tote'), el('span', 'help-ver', 'v' + version), el('span', 'help-dot', '·'), el('span', 'help-maker', 'Abodh SG'));
+    about.appendChild(chip);
     body.appendChild(about);
     for (const c of CARDS) body.appendChild(card(c));
   }
