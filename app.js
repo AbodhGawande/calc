@@ -29,7 +29,7 @@
 
   const $ = id => document.getElementById(id);
   const els = {
-    app: $('app'), scroller: $('scroller'), note: $('note'), answers: $('answers'), placeholder: $('placeholder'),
+    app: $('app'), scroller: $('scroller'), note: $('note'), answers: $('answers'),
     keypad: $('keypad'), fxBar: $('fxBar'), vars: $('vars'), varChips: $('varChips'), menu: $('menu'),
     nameBox: $('nameBox'), nbValue: $('nbValue'), nbInput: $('nbInput'), nbError: $('nbError'), nbRemove: $('nbRemove'),
     help: $('help'), undo: $('undoBtn'), dot: $('backupDot'), sheet: $('sheet'), backupLine: $('backupLine'),
@@ -159,7 +159,6 @@
       if (!lineMatches(div, segs)) { buildLine(div, segs); rebuilt = true; }
       if (CONV.test(line)) anyConv = true;
     });
-    els.placeholder.hidden = text !== '';
     relayout();
     renderChips();
     renderFx(anyConv);

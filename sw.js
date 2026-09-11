@@ -1,6 +1,6 @@
 /* Offline support: the whole app is cached on install and served from the cache.
    Bump VERSION on every deploy — that is what makes phones pick up the new files. */
-const VERSION = 'calc-v6';
+const VERSION = 'calc-v7';
 const ASSETS = [
   './',
   './index.html',
@@ -15,7 +15,10 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(VERSION).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // cache: 'reload' skips the browser's own copy (GitHub Pages lets it keep files for 10 minutes),
+  // so a new version never gets cached with the previous version's files.
+  const fresh = ASSETS.map(url => new Request(url, { cache: 'reload' }));
+  event.waitUntil(caches.open(VERSION).then(cache => cache.addAll(fresh)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', event => {
