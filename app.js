@@ -14,7 +14,7 @@
   const MIN = 60000;
   const OPS = '+−×÷-*/';
   const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
-  const APP_VERSION = 17; // shown at the bottom of the help page; bump together with VERSION in sw.js
+  const APP_VERSION = 18; // shown at the bottom of the help page; bump together with VERSION in sw.js
   const FS_MIN = 22, FS_MAX = 36; // page text size: starts at FS_MAX, never smaller than FS_MIN
 
   // ---------- storage ----------
@@ -39,6 +39,10 @@
     '',
     'Rent in rupees',
     '1500 $ to ₹',
+    '',
+    'Workout this week',
+    '3 × 45 min = gym',
+    'gym min to hr',
     '',
     'Call with Mumbai',
     '5 pm cst to ist',

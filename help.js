@@ -21,7 +21,7 @@
     { cap: 'Start a line with + − × ÷ to keep going. The total shows on the last line.',
       lines: [['320 [[flight]]', ''], ['+ 85 [[hotel]]', ''], ['+ 40 [[food]]', '~445']] },
     { cap: 'Convert by typing it. Or press ⇄ for a list.',
-      lines: [['320 mi to km', '~514.99 km'], ['72 f to c', '~22.22 °C'], ['1500 $ to ₹', '~₹1,43,160.00'], ['5 pm cst to ist', '~3:30 AM IST +1']] },
+      lines: [['320 mi to km', '~514.99 km'], ['72 f to c', '~22.22 °C'], ['1500 $ to ₹', '~₹1,43,160.00'], ['150 min to hr', '~2 hr 30 min'], ['5 pm cst to ist', '~3:30 AM IST +1']] },
     { cap: 'Tap an answer: Use puts it on your line, Copy sends it to other apps.',
       lines: [['45 + 18 + 12=', '75']], menu: true },
     { cap: 'Tap any number to change it. Everything below updates.',
