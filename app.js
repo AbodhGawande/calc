@@ -1,4 +1,4 @@
-/* Calc — the note page: editor, keypad, answers, names, currency, backup, help. All maths lives in engine.js.
+/* Tote — the note page: editor, keypad, answers, names, currency, backup, help. All maths lives in engine.js.
 
    The page is plain text (lines joined by "\n"). The editor shows one <div class="ln"> per line, split into
    plain text and styled pieces (names in blue, the → of a named line). Answers are NOT in the editor: they are
@@ -14,7 +14,7 @@
   const OPS = '+−×÷-*/';
   const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
   const CONV = /\$→₹|₹→\$/;
-  const APP_VERSION = 9; // shown at the bottom of the help page; bump together with VERSION in sw.js
+  const APP_VERSION = 10; // shown at the bottom of the help page; bump together with VERSION in sw.js
   const HELP_VERSION = 6; // bump to show the help page once after an update that changes how things work
   const FS_MIN = 22, FS_MAX = 36; // page text size: starts at FS_MAX, never smaller than FS_MIN
 
@@ -785,7 +785,7 @@
   }
   $('helpBtn').addEventListener('click', openHelp);
   $('helpDone').addEventListener('click', closeHelp);
-  $('helpVersion').textContent = 'Calc · version ' + APP_VERSION;
+  $('helpVersion').textContent = 'Tote · version ' + APP_VERSION;
 
   // ---------- currency ----------
   // Primary: ECB reference rates via Frankfurter. Fallback: ExchangeRate-API's open endpoint. Both keyless.
@@ -916,8 +916,8 @@
     const body = JSON.stringify({ app: 'calc', version: 2, exportedAt: new Date().toISOString(), text, settings, fx });
     // iOS share sheet ("Save to Files"). Some browsers won't share .json, so fall back to .txt, then to a download.
     const candidates = [
-      new File([body], `calc-backup-${stamp}.json`, { type: 'application/json' }),
-      new File([body], `calc-backup-${stamp}.txt`, { type: 'text/plain' }),
+      new File([body], `tote-backup-${stamp}.json`, { type: 'application/json' }),
+      new File([body], `tote-backup-${stamp}.txt`, { type: 'text/plain' }),
     ];
     try {
       const file = navigator.canShare && candidates.find(f => navigator.canShare({ files: [f] }));
@@ -958,7 +958,7 @@
       closeSheet();
       toast('Backup added to the end of the page');
     } catch (e) {
-      toast('That file isn’t a Calc backup');
+      toast('That file isn’t a Tote backup');
     }
   }
   $('exportBtn').addEventListener('click', exportPage);

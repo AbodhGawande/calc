@@ -1,4 +1,7 @@
-# Calc
+# Tote
+
+(Named "Calc" until version 10. The repo, web address and saved-data keys still say `calc`, on purpose:
+changing them would move the app to a new address and lose what's saved on the phone.)
 
 A calculator page in the style of Apple's Math Notes, with a calculator keypad, free editing,
 brackets anywhere, and USD ⇄ INR conversion. Built as a Home Screen web app (PWA): plain

@@ -1,6 +1,6 @@
 {
-  "name": "Calc",
-  "short_name": "Calc",
+  "name": "Tote",
+  "short_name": "Tote",
   "description": "Math-notes style calculator page with USD ⇄ INR conversion",
   "start_url": "./",
   "scope": "./",
