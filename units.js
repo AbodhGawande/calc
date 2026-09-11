@@ -57,6 +57,13 @@
       'km/L': { f: 1, aliases: ['km/l', 'kml', 'kmpl'] },
       mpg: { f: 0.425143707, aliases: ['mpg'] },
     } },
+    duration: { base: 'min', units: {
+      sec: { f: 1 / 60, aliases: ['sec', 's', 'secs', 'second', 'seconds'] },
+      min: { f: 1, aliases: ['min', 'mins', 'minute', 'minutes'] },
+      hr: { f: 60, aliases: ['hr', 'h', 'hrs', 'hour', 'hours'] },
+      day: { f: 1440, aliases: ['day', 'd', 'days'] },
+      wk: { f: 10080, aliases: ['wk', 'week', 'weeks', 'wks'] },
+    } },
     temperature: { base: '°C', units: {
       '°C': { aliases: ['c', '°c', 'celsius', 'centigrade', 'degc'] },
       '°F': { aliases: ['f', '°f', 'fahrenheit', 'degf'] },
@@ -211,7 +218,18 @@
     const value = fromBase(base, target.unit, cat);
     const out = { kind: 'unit', value, unit: target.unit };
     if (target.unit === 'ft' && value >= 0) out.text = feetInches(value); // 5 ft 10.9 in, never 5.91 ft
+    if (target.unit === 'hr' && value >= 0) out.text = bigSmall(value, 60, 'hr', 'min');   // 2 hr 33 min, seconds dropped
+    if (target.unit === 'day' && value >= 0) out.text = bigSmall(value, 24, 'day', 'hr');  // 6 days 9 hr
+    if (target.unit === 'wk' && value >= 0) out.text = bigSmall(value, 7, 'wk', 'day');
     return out;
+  }
+
+  // "2 hr 33 min" from 2.55 hours: the small unit is rounded to a whole number.
+  function bigSmall(v, per, big, small) {
+    let b = Math.floor(v), sm = Math.round((v - b) * per);
+    if (sm >= per) { b += 1; sm -= per; }
+    const bigLabel = big === 'day' && b !== 1 ? 'days' : big;
+    return sm ? `${b} ${bigLabel} ${sm} ${small}` : `${b} ${bigLabel}`;
   }
 
   function feetInches(ft) {
@@ -266,7 +284,7 @@
   }
   const zoneByAlias = alias => ZONE_BY_ALIAS.get(String(alias).toLowerCase()) || null;
 
-  const api = { CATEGORIES, ZONES, parseConversion, convert, convertTime, feetInches, lookupUnit, zoneByAlias, isCurrency };
+  const api = { CATEGORIES, ZONES, parseConversion, convert, convertTime, feetInches, bigSmall, lookupUnit, zoneByAlias, isCurrency };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.CalcUnits = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

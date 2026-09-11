@@ -15,6 +15,7 @@
     ['Currency', [['money']]],
     ['Volume', [['gal', 'L'], ['fl oz', 'ml'], ['cup', 'ml'], ['tbsp', 'ml'], ['tsp', 'ml']]],
     ['Time zones', [['time']]],
+    ['Time', [['hrmin', 'min'], ['day', 'hr'], ['wk', 'day']]],
     ['Temperature', [['°F', '°C']]],
     ['Speed', [['mph', 'km/h']]],
     ['Fuel', [['mpg', 'km/L']]],
@@ -62,11 +63,12 @@
     return row;
   }
 
-  function ftinRow(b) {
+  // A big+small pair on the left (5 ft 10 in, 2 hr 30 min) against one unit on the right.
+  function compoundRow(big, small, per, b, dec) {
     const row = el('div', 'c-row');
     const ift = numInput('narrow'), iin = numInput('narrow'), icm = numInput();
     const sideA = el('div', 'c-side'), sideB = el('div', 'c-side');
-    sideA.append(ift, el('span', 'c-unit', 'ft'), iin, el('span', 'c-unit', 'in'));
+    sideA.append(ift, el('span', 'c-unit', big), iin, el('span', 'c-unit', small));
     sideB.append(icm, el('span', 'c-unit', b));
     const add = el('button', 'c-add', '+');
     row.append(sideA, el('span', 'c-arrow', '⇄'), sideB, add);
@@ -75,7 +77,7 @@
       last = 'a';
       const f = parseNum(ift.value) || 0, i = parseNum(iin.value) || 0;
       if (!ift.value && !iin.value) { icm.value = ''; return; }
-      const r = U.convert([[f, 'ft'], [i, 'in']], b);
+      const r = U.convert([[f, big], [i, small]], b);
       icm.value = r ? show(r.value) : '';
     };
     ift.addEventListener('input', fromFtIn);
@@ -84,20 +86,21 @@
       last = 'b';
       const v = parseNum(icm.value);
       if (v == null) { ift.value = iin.value = ''; return; }
-      const totalIn = U.convert([[v, b]], 'in').value;
-      const f = Math.floor(totalIn / 12), i = totalIn - f * 12;
+      const totalIn = U.convert([[v, b]], small).value;
+      const f = Math.floor(totalIn / per), i = totalIn - f * per;
       ift.value = String(f);
-      iin.value = show(Math.round(i * 100) / 100);
+      const k = 10 ** dec;
+      iin.value = show(Math.round(i * k) / k);
     });
     add.addEventListener('click', () => {
       if (last === 'a') {
         const f = parseNum(ift.value) || 0, i = parseNum(iin.value) || 0;
         if (!ift.value && !iin.value) { deps.toast('Type a number first'); return; }
-        deps.insertLine(`${f} ft ${i} in to ${b}`);
+        deps.insertLine(`${f} ${big} ${i} ${small} to ${b}`);
       } else {
         const v = parseNum(icm.value);
         if (v == null) { deps.toast('Type a number first'); return; }
-        deps.insertLine(lineFor(v, b, 'ft'));
+        deps.insertLine(lineFor(v, b, big));
       }
       close();
     });
@@ -205,7 +208,8 @@
     for (const [title, rows] of SECTIONS) {
       body.appendChild(el('div', 'c-title', title));
       for (const r of rows) {
-        if (r[0] === 'ftin') body.appendChild(ftinRow(r[1]));
+        if (r[0] === 'ftin') body.appendChild(compoundRow('ft', 'in', 12, r[1], 1));
+        else if (r[0] === 'hrmin') body.appendChild(compoundRow('hr', 'min', 60, r[1], 0));
         else if (r[0] === 'money') body.appendChild(moneyRow());
         else if (r[0] === 'time') body.appendChild(timeRow());
         else body.appendChild(pairRow(r[0], r[1]));

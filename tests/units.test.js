@@ -61,6 +61,21 @@ test('feet come out as feet and inches', () => {
   assert.equal(U.feetInches(5.9999), '6 ft');
 });
 
+test('durations come out as hours and minutes, days and hours', () => {
+  assert.equal(conv('153.2 min to hr').text, '2 hr 33 min');
+  assert.equal(conv('90 min to hr').text, '1 hr 30 min');
+  assert.equal(conv('120 min to hr').text, '2 hr');
+  assert.equal(conv('2 hr 30 min to min').value, 150);
+  assert.equal(conv('1.5 hr to min').value, 90);
+  assert.equal(conv('153 hr to day').text, '6 days 9 hr');
+  assert.equal(conv('36 hr to days').text, '1 day 12 hr');
+  assert.equal(conv('3600 sec to hr').text, '1 hr');
+  assert.equal(conv('100 min to h').text, '1 hr 40 min');
+  close(conv('153.2 min to hr').value, 2.5533);   // the number stays decimal for chaining
+  assert.equal(conv('10 day to wk').text, '1 wk 3 day');
+  assert.equal(conv('5 min to kg'), null);
+});
+
 test('temperature', () => {
   close(conv('72 f to c').value, 22.22);
   close(conv('100 c to f').value, 212);
