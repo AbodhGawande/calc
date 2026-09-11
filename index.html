@@ -18,9 +18,7 @@
 <body>
 <main id="app">
   <div class="topbar">
-    <button id="clearBtn" class="tb-btn" aria-label="Clear page">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5"/></svg>
-    </button>
+    <button id="clearBtn" class="tb-btn tb-text" aria-label="Clear page">Clear</button>
     <button id="backupBtn" class="tb-btn" aria-label="Backup">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 7l4-4 4 4M8 11H6v10h12V11h-2"/></svg>
       <span id="backupDot" class="dot" hidden></span>
@@ -80,6 +78,7 @@
 
 <!-- Tap an answer: Use / Name / Copy -->
 <div id="menu" class="menu" role="menu" hidden>
+  <span id="menuFull" class="menu-full" hidden></span>
   <button data-act="use" role="menuitem">Use</button>
   <button data-act="name" role="menuitem">Name</button>
   <button data-act="copy" role="menuitem">Copy</button>
@@ -116,7 +115,7 @@
     <div class="h-item"><span class="h-ico">$₹</span><div><b>Dollars ⇄ rupees</b>Press $₹ to convert the line. Press it again to flip the direction.</div></div>
     <div class="h-item"><span class="h-ico">ABC</span><div><b>Words</b>ABC opens the iPhone keyboard for notes like “Hotel”. The orange calculator button brings the keypad back.</div></div>
     <div class="h-item"><span class="h-ico g">?</span><div><b>A grey ?</b>That line can't be worked out. Check the brackets, and that its names are set on a line above.</div></div>
-    <div class="h-item"><span class="h-ico">↶</span><div><b>Undo and clear</b>↶ undoes. The bin clears the page; ↶ brings it back until you close the app.</div></div>
+    <div class="h-item"><span class="h-ico">↶</span><div><b>Undo and clear</b>↶ undoes. Clear wipes the page at once; tap Undo on the message (or ↶) to bring it back.</div></div>
     <div class="h-item"><span class="h-ico">⤴︎</span><div><b>Back up</b>The share button saves a copy to Files. Do it now and then: iPhone can clear app data.</div></div>
     <p id="helpVersion" class="help-version"></p>
   </div>

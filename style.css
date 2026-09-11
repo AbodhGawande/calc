@@ -47,6 +47,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .tb-btn { position: relative; width: 42px; height: 42px; border-radius: 50%; background: #1c1c1e; display: grid; place-items: center; color: var(--text); }
 .tb-btn svg { width: 21px; height: 21px; }
 .tb-btn.off { color: #5c5c5f; }
+.tb-text { width: auto; padding: 0 16px; border-radius: 21px; font-size: 15px; font-weight: 500; }
 .tb-btn.accent { background: var(--op); }
 #keypadBtn { display: none; }
 .textmode #keypadBtn { display: grid; }
@@ -192,6 +193,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   transition: opacity 0.2s, transform 0.2s;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.tappable { pointer-events: auto; cursor: pointer; }
+.toast-act { margin-left: 14px; color: var(--op); font-weight: 600; }
 .textmode ~ .toast { bottom: auto; top: calc(env(safe-area-inset-top) + 62px); }
 
 .help-btn { font-size: 21px; font-weight: 600; }
@@ -207,6 +210,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
 }
 .menu button { padding: 11px 17px; font-size: 16px; color: var(--text); }
+.menu-full { align-self: center; padding: 0 12px 0 14px; font-size: 14px; color: var(--op); border-right: 0.5px solid #545458; }
 .menu button + button { border-left: 0.5px solid #545458; }
 .menu button:active { background: #4a4a4e; }
 

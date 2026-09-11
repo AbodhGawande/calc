@@ -14,7 +14,7 @@
   const OPS = '+−×÷-*/';
   const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
   const CONV = /\$→₹|₹→\$/;
-  const APP_VERSION = 10; // shown at the bottom of the help page; bump together with VERSION in sw.js
+  const APP_VERSION = 11; // shown at the bottom of the help page; bump together with VERSION in sw.js
   const HELP_VERSION = 6; // bump to show the help page once after an update that changes how things work
   const FS_MIN = 22, FS_MAX = 36; // page text size: starts at FS_MAX, never smaller than FS_MIN
 
@@ -31,7 +31,7 @@
   const $ = id => document.getElementById(id);
   const els = {
     app: $('app'), scroller: $('scroller'), note: $('note'), answers: $('answers'),
-    keypad: $('keypad'), fxBar: $('fxBar'), vars: $('vars'), varChips: $('varChips'), menu: $('menu'),
+    keypad: $('keypad'), fxBar: $('fxBar'), vars: $('vars'), varChips: $('varChips'), menu: $('menu'), menuFull: $('menuFull'),
     nameBox: $('nameBox'), nbValue: $('nbValue'), nbInput: $('nbInput'), nbError: $('nbError'), nbRemove: $('nbRemove'),
     help: $('help'), undo: $('undoBtn'), dot: $('backupDot'), sheet: $('sheet'), backupLine: $('backupLine'),
     diag: $('diag'), file: $('importFile'), toast: $('toast'),
@@ -207,7 +207,7 @@
       case 'answer':
       case 'live':
         return {
-          text: info.conv ? money(info.value, info.conv.split('>')[1]) : fmt.result(info.value),
+          text: info.conv ? money(info.value, info.conv.split('>')[1]) : fmt.short(info.value),
           value: info.value,
           live: info.status === 'live',
         };
@@ -255,6 +255,10 @@
     menuValue = ans.value;
     pill.classList.add('active');
     const m = els.menu;
+    // Answers show 2 decimals; the menu shows the full number when there's more to it.
+    const full = fmt.result(ans.value);
+    els.menuFull.textContent = full;
+    els.menuFull.hidden = full === ans.text;
     m.hidden = false;
     const r = pill.getBoundingClientRect(), mr = m.getBoundingClientRect();
     let top = r.top - mr.height - 8;
@@ -299,7 +303,7 @@
   els.scroller.addEventListener('scroll', closeMenu, { passive: true });
 
   function copyValue(v) {
-    const done = () => toast('Copied ' + fmt.result(v));
+    const done = () => toast('Copied ' + fmt.short(v));
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(E.rawString(v)).then(done, () => toast('Couldn’t copy'));
     else toast('Couldn’t copy');
   }
@@ -516,7 +520,7 @@
     if (line == null || !info) return;
     const value = info.value != null && isFinite(info.value) ? info.value : null; // the running total on multi-line sums
     if (value == null) { toast('Nothing to name on this line — type a number or a calculation first'); return; }
-    const shown = info.conv ? money(value, info.conv.split('>')[1]) : fmt.result(value);
+    const shown = info.conv ? money(value, info.conv.split('>')[1]) : fmt.short(value);
     const def = E.defOf(line);
     nameTarget = { idx, line };
     els.nbValue.textContent = shown;
@@ -659,7 +663,7 @@
       n.textContent = v.name;
       const val = document.createElement('span');
       val.className = 'chip-val';
-      val.textContent = fmt.result(v.value);
+      val.textContent = fmt.short(v.value);
       b.append(n, val);
       els.varChips.appendChild(b);
     }
@@ -760,15 +764,15 @@
   }
 
   // ---------- clear ----------
+  // One tap clears the page, no confirmation: the toast undoes it, and so does ↶ until the app is closed.
   $('clearBtn').addEventListener('click', () => {
     if (!text) return;
-    if (!confirm('Clear the whole page?\n\nYou can bring it back with Undo (↶) until you close the app.')) return;
     closeMenu();
     pushUndo({ text, sel: sel.slice() }, 'clear');
     text = '';
     sel = [0, 0];
     changed();
-    toast('Page cleared');
+    toast('Page cleared', { label: 'Undo', run: undo });
   });
 
   // ---------- help ----------
@@ -970,13 +974,25 @@
   });
 
   // ---------- toast ----------
-  let toastTimer;
-  function toast(msg) {
-    els.toast.textContent = msg;
-    els.toast.classList.add('show');
+  let toastTimer, toastAction = null;
+  // action = { label, run }: adds a tappable word to the toast ("Page cleared  Undo").
+  function toast(msg, action) {
+    const t = els.toast;
+    t.textContent = msg;
+    toastAction = action || null;
+    if (action) {
+      const b = document.createElement('span');
+      b.className = 'toast-act';
+      b.textContent = action.label;
+      t.appendChild(b);
+    }
+    t.classList.toggle('tappable', !!action);
+    t.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => els.toast.classList.remove('show'), msg.length > 40 ? 3500 : 2000);
+    toastTimer = setTimeout(hideToast, action ? 5000 : msg.length > 40 ? 3500 : 2000);
   }
+  function hideToast() { els.toast.classList.remove('show'); toastAction = null; }
+  els.toast.addEventListener('click', () => { if (toastAction) { const a = toastAction; hideToast(); a.run(); } });
 
   // ---------- start ----------
   document.addEventListener('gesturestart', e => e.preventDefault());

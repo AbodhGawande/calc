@@ -195,9 +195,18 @@
 
   const isFinished = line => !!defOf(line) || /=\s*$/.test(line);
 
-  // Work out one line. running = the total carried from the line above when this line continues it (cont).
+  // The operator a line ends with ("500 rent+" → '+'), or null. Only for unfinished lines.
+  function trailingOp(line) {
+    if (isFinished(line)) return null;
+    const m = /([+\-−–×÷*/])\s*$/.exec(line);
+    if (!m) return null;
+    return { '+': '+', '-': '-', '−': '-', '–': '-', '×': '*', '*': '*', '÷': '/', '/': '/' }[m[1]];
+  }
+
+  // Work out one line. running = the total carried from the line above when this line continues it (cont);
+  // leadOp = the operator the line above ended with, when that is what joins them ("500 rent+" / "200 food").
   // → null, or { value, used, exprStart, exprEnd, eqIndex, conv, def, finished, simple, operation }
-  function lineCalc(line, vars, running, cont) {
+  function lineCalc(line, vars, running, cont, leadOp) {
     const def = defOf(line);
     const finished = isFinished(line);
     let body = def ? line.slice(0, def.eq) : line.replace(/=\s*$/, '');
@@ -217,6 +226,7 @@
 
     if (cont) {
       const carried = running !== null && isFinite(running);
+      if (leadOp && tokens.length && tokens[0].t !== 'op') tokens.unshift({ t: 'op', v: leadOp, pos: 0, sp: false });
       if (!tokens.length) {
         // Just the operator so far ("+"): keep showing the total from above.
         return carried ? Object.assign(base, { value: running, used: [], exprStart: 0, simple: false, operation: true }) : null;
@@ -255,10 +265,10 @@
     return lineCalc(line, vars, null, false);
   }
 
-  // Does this line carry on from the one above? It starts with an operator and has a number or name after it
-  // (or nothing yet). "- buy milk" is a list item, not a subtraction.
-  function isContinuation(line, vars) {
-    if (!CONT_START.test(line)) return false;
+  // Does this line carry on from the one above? Either it starts with an operator, or the line above ended
+  // with one — and it has a number or name in it (or nothing yet). "- buy milk" is a list item, not a subtraction.
+  function isContinuation(line, vars, prevEndsWithOp) {
+    if (!CONT_START.test(line) && !prevEndsWithOp) return false;
     const rest = line.replace(CONT_START, '');
     if (/\d/.test(rest)) return true;
     for (const m of rest.matchAll(NAME_G)) if (vars.has(m[0].toLowerCase())) return true;
@@ -299,12 +309,14 @@
     // Setting a name moves it to the end, so the most recently set names come last.
     const setVar = (name, value) => { const k = name.toLowerCase(); vars.delete(k); vars.set(k, { name, value }); };
     const out = [];
-    let running = null, blockOp = false;
+    let running = null, blockOp = false, pendingOp = null;
     lines.forEach((line, i) => {
       const blank = !line.trim();
-      const cont = !blank && i > 0 && !!lines[i - 1].trim() && isContinuation(line, vars);
+      const cont = !blank && i > 0 && !!lines[i - 1].trim() && isContinuation(line, vars, !!pendingOp);
       if (!cont) { running = null; blockOp = false; }
-      const a = blank ? null : lineCalc(line, vars, running, cont);
+      const leadOp = cont && !CONT_START.test(line) ? pendingOp : null;
+      const a = blank ? null : lineCalc(line, vars, running, cont, leadOp);
+      pendingOp = blank ? null : trailingOp(line);
       let value = a ? a.value : null;
       if (a && a.conv && value !== null && isFinite(value)) value = convert ? convert(value, a.conv) : null;
       if (a && a.operation) blockOp = true;
@@ -399,7 +411,16 @@
       }
       return resFmt.format(r).replace('-', '−');
     }
-    return { result, decimal: dec };
+    // The everyday form: at most 2 decimals (1,283.33). Tiny numbers keep enough digits to be seen.
+    const shortFmt = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 });
+    function short(n) {
+      if (n == null || !isFinite(n)) return 'Error';
+      const a = Math.abs(n);
+      if (a !== 0 && a < 0.01) return result(n);
+      if (a >= 1e15) return result(n);
+      return shortFmt.format(Number(n.toPrecision(14))).replace('-', '−');
+    }
+    return { result, short, decimal: dec };
   }
 
   const api = {

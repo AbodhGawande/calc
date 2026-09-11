@@ -178,6 +178,28 @@ test('multi-line calculations', () => {
   assert.equal(p.lines[1].value, null);
 });
 
+test('a line that ends with an operator joins with the line below', () => {
+  let p = E.evaluatePage(['500 rent+', '200 food']);
+  assert.deepEqual(values(p), [500, 700]);
+  assert.deepEqual(statuses(p), [null, 'live']);
+  assert.deepEqual(varList(p), [['rent', 500], ['food', 200]]);
+  p = E.evaluatePage(['500 ×', '3 =']);
+  assert.deepEqual(values(p), [500, 1500]);
+  assert.deepEqual(statuses(p), [null, 'answer']);
+  assert.deepEqual(values(E.evaluatePage(['500+', '+200'])), [500, 700]);       // both sides: not doubled
+  assert.deepEqual(values(E.evaluatePage(['500+', 'hello'])), [500, null]);     // a word doesn't join
+  assert.deepEqual(values(E.evaluatePage(['500+', '', '200'])), [500, null, 200]); // a blank line ends it
+  assert.deepEqual(values(E.evaluatePage(['500+200=', '300'])), [700, 300]);   // finished lines don't join
+});
+
+test('short formatting keeps 2 decimals', () => {
+  assert.equal(fmt.short(1283.3333333), '1,283.33');
+  assert.equal(fmt.short(700), '700');
+  assert.equal(fmt.short(0.1 + 0.2), '0.3');
+  assert.equal(fmt.short(-2.005), '−2.01');
+  assert.equal(fmt.short(0.0004), '0.0004');
+});
+
 test('live answers while typing', () => {
   assert.deepEqual(statuses(E.evaluatePage(['500+200'])), ['live']);
   assert.deepEqual(statuses(E.evaluatePage(['700 rent'])), [null]);                     // nothing to add up yet
