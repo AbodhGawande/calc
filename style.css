@@ -288,7 +288,11 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .hc-btn-text { width: auto; padding: 0 12px; font-size: 13px; }
 .hc-spacer { flex: 1; }
 .hc-cap { padding: 8px 4px 0; font-size: 14px; line-height: 1.4; color: #d1d1d6; }
-.help-version { padding: 24px 0 4px; text-align: center; font-size: 13px; color: #636366; }
+.help-about { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0 4px; }
+.help-title { display: flex; align-items: baseline; gap: 8px; }
+.help-app { font-size: 22px; font-weight: 700; }
+.help-ver { font-size: 13px; color: var(--dim); }
+.help-maker { flex: none; padding: 5px 11px; border-radius: 999px; background: rgba(100, 210, 255, 0.14); color: var(--name); font-size: 13px; font-weight: 600; }
 
 /* ---------- conversions sheet ---------- */
 .conv-body { padding-top: 4px; }

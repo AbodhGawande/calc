@@ -84,8 +84,13 @@
   function build() {
     const body = $('helpBody');
     body.textContent = '';
+    // App name, version and maker at the top.
+    const about = el('div', 'help-about');
+    const title = el('div', 'help-title');
+    title.append(el('span', 'help-app', 'Tote'), el('span', 'help-ver', 'version ' + version));
+    about.append(title, el('span', 'help-maker', 'Abodh SG'));
+    body.appendChild(about);
     for (const c of CARDS) body.appendChild(card(c));
-    body.appendChild(el('p', 'help-version', 'Tote · version ' + version));
   }
   function open() {
     if (!built) { build(); built = true; }
