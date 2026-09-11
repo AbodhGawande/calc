@@ -277,3 +277,31 @@ test('typed conversions on the page', () => {
   assert.equal(p.lines[5].value, null);                                 // a time isn't a number
   assert.deepEqual(values(E.evaluatePage(['50 km to mi', '+10'], RATES)).map(v => Math.round(v * 100) / 100), [31.07, 41.07]);
 });
+
+test('pasting shared text strips the answers back off', () => {
+  const shared = [
+    '45 pizza + 18 drinks = bill (63)',
+    'bill + 18% = total (74.34)',
+    '45 + 18 + 12 = 75',
+    '320 mi to km = 514.99 km',
+    '1500 $ to ₹ = ₹1,43,160.00',
+    '5 pm cst to ist = 3:30 AM IST +1',
+    '180 cm to ft = 5 ft 10.9 in',
+    '200 var',
+    'Dinner with friends',
+    '10 − 2 = −8',
+  ].join('\n');
+  assert.equal(E.stripAnswers(shared), [
+    '45 pizza + 18 drinks = bill',
+    'bill + 18% = total',
+    '45 + 18 + 12=',
+    '320 mi to km=',
+    '1500 $ to ₹=',
+    '5 pm cst to ist=',
+    '180 cm to ft=',
+    '200 var',
+    'Dinner with friends',
+    '10 − 2=',
+  ].join('\n'));
+  assert.equal(E.stripAnswers('plain words'), 'plain words');
+});

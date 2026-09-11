@@ -208,7 +208,16 @@
       if (!uu || uu.cat !== cat) return null;
       base += toBase(a, uu.unit, cat);
     }
-    return { kind: 'unit', value: fromBase(base, target.unit, cat), unit: target.unit };
+    const value = fromBase(base, target.unit, cat);
+    const out = { kind: 'unit', value, unit: target.unit };
+    if (target.unit === 'ft' && value >= 0) out.text = feetInches(value); // 5 ft 10.9 in, never 5.91 ft
+    return out;
+  }
+
+  function feetInches(ft) {
+    let f = Math.floor(ft), i = Math.round((ft - f) * 12 * 10) / 10;
+    if (i >= 12) { f += 1; i -= 12; }
+    return i ? `${f} ft ${i} in` : `${f} ft`;
   }
 
   function lookupUnit(name) {
@@ -257,7 +266,7 @@
   }
   const zoneByAlias = alias => ZONE_BY_ALIAS.get(String(alias).toLowerCase()) || null;
 
-  const api = { CATEGORIES, ZONES, parseConversion, convert, convertTime, lookupUnit, zoneByAlias, isCurrency };
+  const api = { CATEGORIES, ZONES, parseConversion, convert, convertTime, feetInches, lookupUnit, zoneByAlias, isCurrency };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.CalcUnits = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

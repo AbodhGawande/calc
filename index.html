@@ -19,9 +19,8 @@
 <main id="app">
   <div class="topbar">
     <button id="clearBtn" class="tb-btn tb-text" aria-label="Clear page">Clear</button>
-    <button id="backupBtn" class="tb-btn" aria-label="Backup">
+    <button id="shareBtn" class="tb-btn" aria-label="Share page">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 7l4-4 4 4M8 11H6v10h12V11h-2"/></svg>
-      <span id="backupDot" class="dot" hidden></span>
     </button>
     <button id="helpBtn" class="tb-btn help-btn" aria-label="Help">?</button>
     <span class="spacer"></span>
@@ -102,39 +101,22 @@
   </div>
 </div>
 
-<!-- Help -->
+<!-- Help: drawn by help.js -->
 <div id="help" class="help" aria-hidden="true" inert>
   <div class="help-head"><h2>How to use Tote</h2><button id="helpDone" class="done">Done</button></div>
-  <div class="help-body">
-    <div class="h-item"><span class="h-ico o">700</span><div><b>Just type</b>The answer shows on the right as you go, slightly dimmed. Press = to finish the line: the answer turns solid and the next number starts a new line.</div></div>
-    <div class="h-item"><span class="h-ico b">rent</span><div><b>Words name numbers</b>A word right after a number names it: <span class="h-ex">700 <span class="h-name">rent</span> + 500 <span class="h-name">food</span></span> = 1,200, and now rent is 700. A word after = names the total: <span class="h-ex">… = <span class="h-name">expense</span></span>.</div></div>
-    <div class="h-item"><span class="h-ico">+</span><div><b>Several lines</b>Start a line with + − × ÷ to carry on from the line above. The total shows on the last line. After an answer, pressing + − × ÷ does this for you.</div></div>
-    <div class="h-item"><span class="h-ico">✎</span><div><b>Edit anything</b>Tap any number to put the cursor there and change it. Answers update straight away.</div></div>
-    <div class="h-item"><span class="h-ico">( )</span><div><b>Brackets</b>Add them anywhere. A missing ) is added for you.</div></div>
-    <div class="h-item"><span class="h-ico o">700</span><div><b>Reuse an answer</b>Tap an orange answer: <i>Use</i> puts it on your line, <i>Copy</i> copies it.</div></div>
-    <div class="h-item"><span class="h-ico b">rent</span><div><b>Use a name</b>On any line below, type it or tap its blue chip above the keypad: <span class="h-ex"><span class="h-name">rent</span>×12</span>. Change the original number and everything below updates. The same word used again further down takes over from there.</div></div>
-    <div class="h-item"><span class="h-ico o">Name…</span><div><b>Name without the keyboard</b>Tap <i>Name…</i> above the keypad (or an answer's <i>Name</i>) to name the line you're on.</div></div>
-    <div class="h-item"><span class="h-ico">⇄</span><div><b>Convert</b>Type it: <span class="h-ex">50 km to mi</span>, <span class="h-ex">5 ft 10 in to cm</span>, <span class="h-ex">72 f to c</span>, <span class="h-ex">100 $ to ₹</span>, <span class="h-ex">3 pm cst to ist</span>. Or press ⇄ for a list you can type into from either side.</div></div>
-    <div class="h-item"><span class="h-ico">ABC</span><div><b>Words</b>ABC opens the iPhone keyboard for notes like “Hotel”. The orange calculator button brings the keypad back.</div></div>
-    <div class="h-item"><span class="h-ico g">?</span><div><b>A grey ?</b>That line can't be worked out. Check the brackets, and that its names are set on a line above.</div></div>
-    <div class="h-item"><span class="h-ico">↶</span><div><b>Undo and clear</b>↶ undoes. Clear wipes the page at once; tap Undo on the message (or ↶) to bring it back.</div></div>
-    <div class="h-item"><span class="h-ico">⤴︎</span><div><b>Back up</b>The share button saves a copy to Files. Do it now and then: iPhone can clear app data.</div></div>
-    <p id="helpVersion" class="help-version"></p>
-  </div>
+  <div id="helpBody" class="help-body"></div>
 </div>
 
-<div id="sheet" class="sheet" aria-hidden="true" inert>
+<!-- Share -->
+<div id="shareSheet" class="sheet" aria-hidden="true" inert>
   <div class="sheet-card">
-    <div class="sheet-head"><h2>Backup</h2><button id="sheetDone" class="done">Done</button></div>
-    <p id="backupLine" class="backup"></p>
-    <p class="hint">iPhone can clear a web app's saved data. Export saves a copy of the page to Files (e.g. iCloud Drive). Import adds a saved copy to the end of the page.</p>
+    <div class="sheet-head"><h2>Share this page</h2><button id="shareDone" class="done">Cancel</button></div>
     <div class="sheet-actions">
-      <button id="exportBtn">Export</button>
-      <button id="importBtn">Import</button>
+      <button id="shareText">As text</button>
+      <button id="shareImage">As a picture</button>
     </div>
-    <p id="diag" class="diag"></p>
+    <p class="hint">Text pastes back into Tote with its answers stripped, so a note in Messages or Notes doubles as a copy.</p>
   </div>
-  <input id="importFile" type="file" accept=".json,.txt,application/json,text/plain" hidden>
 </div>
 
 <div id="toast" class="toast" role="status"></div>
@@ -148,6 +130,7 @@
 <script src="units.js"></script>
 <script src="engine.js"></script>
 <script src="convert.js"></script>
+<script src="help.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

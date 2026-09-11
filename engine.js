@@ -296,6 +296,20 @@
     return plain ? head : head + '=';
   }
 
+  // Text shared from the app carries its answers ("45 + 18 = 63", "… = bill (63)", "320 mi to km = 514.99 km").
+  // Pasting it back strips them, so the lines calculate again instead of reading as words.
+  const ANSWER = '(?:[$₹€£¥]?[−-]?[\\d,]*\\.?\\d+(?:\\s?[\\p{L}°][\\p{L}°/]*)?(?:\\s\\d[\\d.]*\\s?\\p{L}+)?|\\d{1,2}:\\d{2} [AP]M \\S+(?: [+−]1)?)';
+  const SHARED_ANS = new RegExp(`\\s=\\s${ANSWER}\\s*$`, 'u');
+  const SHARED_NAMED = new RegExp(`\\s\\(${ANSWER}\\)\\s*$`, 'u');
+  function stripAnswers(text) {
+    return text.split('\n').map(line => {
+      if (defOf(line)) return line;
+      if (SHARED_NAMED.test(line) && defOf(line.replace(SHARED_NAMED, ''))) return line.replace(SHARED_NAMED, '');
+      if (SHARED_ANS.test(line)) return line.replace(SHARED_ANS, '=');
+      return line;
+    }).join('\n');
+  }
+
   // Earlier versions wrote names as "200=var" (v3) or "500+200 → rent" (v4–5); write them the current way:
   // "500+200 = rent", and for a plain number "200 var".
   function modernizeNames(text) {
@@ -446,7 +460,7 @@
   }
 
   const api = {
-    SYMBOL, tokenize, parse, evaluate, defOf, analyzeLine, openValue, nameLine, modernizeNames, isValidName,
+    SYMBOL, tokenize, parse, evaluate, defOf, analyzeLine, openValue, nameLine, modernizeNames, stripAnswers, isValidName,
     evaluatePage, continueLine, migrateV1, makeFormatter, rawString,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

@@ -1,4 +1,4 @@
-/* Tote — the note page: editor, keypad, answers, names, currency, backup, help. All maths lives in engine.js.
+/* Tote — the note page: editor, keypad, answers, names, currency, share. All maths lives in engine.js.
 
    The page is plain text (lines joined by "\n"). The editor shows one <div class="ln"> per line, split into
    plain text and styled pieces (names in blue, the → of a named line). Answers are NOT in the editor: they are
@@ -13,27 +13,42 @@
   const MIN = 60000, HOUR = 60 * MIN, DAY = 24 * HOUR;
   const OPS = '+−×÷-*/';
   const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
-  const APP_VERSION = 12; // shown at the bottom of the help page; bump together with VERSION in sw.js
-  const HELP_VERSION = 6; // bump to show the help page once after an update that changes how things work
+  const APP_VERSION = 13; // shown at the bottom of the help page; bump together with VERSION in sw.js
   const FS_MIN = 22, FS_MAX = 36; // page text size: starts at FS_MAX, never smaller than FS_MIN
 
   // ---------- storage ----------
   // localStorage is the only store. iOS may wipe it, so Backup ▸ Export is the safety net.
-  const K = { note: 'calc.note', settings: 'calc.settings', fx: 'calc.fx', backup: 'calc.backup', v1: 'calc.history' };
+  const K = { note: 'calc.note', settings: 'calc.settings', fx: 'calc.fx', v1: 'calc.history' };
   function load(key, fallback) {
     try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); } catch (e) { return fallback; }
   }
   function save(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { toast('Storage full — export a backup'); }
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { toast('Storage full — share the page as text and clear it'); }
   }
+
+  const EXAMPLE_PAGE = [
+    'Dinner with friends',
+    '45 pizza + 18 drinks + 12 dessert = bill',
+    'bill + 18% = total',
+    'total ÷ 4 = each',
+    '',
+    'Road trip',
+    '320 mi to km',
+    '9 gal to L',
+    '',
+    'Rent in rupees',
+    '1500 $ to ₹',
+    '',
+    'Call with Mumbai',
+    '5 pm cst to ist',
+  ].join('\n');
 
   const $ = id => document.getElementById(id);
   const els = {
     app: $('app'), scroller: $('scroller'), note: $('note'), answers: $('answers'),
     keypad: $('keypad'), fxBar: $('fxBar'), vars: $('vars'), varChips: $('varChips'), menu: $('menu'), menuFull: $('menuFull'),
     nameBox: $('nameBox'), nbValue: $('nbValue'), nbInput: $('nbInput'), nbError: $('nbError'), nbRemove: $('nbRemove'),
-    help: $('help'), undo: $('undoBtn'), dot: $('backupDot'), sheet: $('sheet'), backupLine: $('backupLine'),
-    diag: $('diag'), file: $('importFile'), toast: $('toast'),
+    undo: $('undoBtn'), share: $('shareSheet'), toast: $('toast'),
   };
 
   // ---------- state ----------
@@ -48,14 +63,16 @@
       text = E.migrateV1(v1).join('\n');
       updatedAt = Date.now();
       if (text) notice = 'Your earlier calculations are on the page';
+    } else {
+      // The very first launch: a worked example instead of an empty page.
+      text = EXAMPLE_PAGE;
     }
   }
   const modern = E.modernizeNames(text); // older "→ name" / "=name" lines → "… = name" (or "200 var")
   if (modern !== text) { text = modern; updatedAt = Date.now(); notice = notice || 'Named lines now read “= name”'; }
   let sel = saved && Array.isArray(saved.sel) ? saved.sel.map(n => Math.max(0, Math.min(text.length, n | 0))) : [text.length, text.length];
-  const settings = Object.assign({ helpSeen: 0 }, load(K.settings, {}));
+  const settings = Object.assign({}, load(K.settings, {}));
   let fx = load(K.fx, null);
-  let backup = load(K.backup, null);
   let fxBusy = false;
   let textMode = false;
   let page = { lines: [], vars: new Map() }; // the latest E.evaluatePage result
@@ -205,7 +222,7 @@
   function resultText(info) {
     const r = info.result;
     if (!r) return fmt.short(info.value);
-    if (r.kind === 'time') return r.text;
+    if (r.text) return r.text; // times, and feet as "5 ft 10.9 in"
     if (r.kind === 'money') return money(r.value, r.unit);
     return fmt.short(r.value) + ' ' + r.unit;
   }
@@ -507,7 +524,6 @@
     applySel();
     revealCaret();
     scheduleSave();
-    updateDot();
   }
 
   // ---------- naming ----------
@@ -623,13 +639,12 @@
     nativeBefore = null;
     updatedAt = Date.now();
     scheduleSave();
-    updateDot();
   }
   els.note.addEventListener('input', e => { if (!e.isComposing) afterNativeInput(); });
   els.note.addEventListener('compositionend', afterNativeInput);
   els.note.addEventListener('paste', e => {
     e.preventDefault();
-    const t = (e.clipboardData && e.clipboardData.getData('text/plain') || '').replace(/\r\n?/g, '\n');
+    const t = E.stripAnswers((e.clipboardData && e.clipboardData.getData('text/plain') || '').replace(/\r\n?/g, '\n'));
     if (!t) return;
     syncSel();
     pushUndo({ text, sel: sel.slice() }, 'paste');
@@ -773,20 +788,7 @@
   });
 
   // ---------- help ----------
-  function openHelp() {
-    closeMenu();
-    els.help.classList.add('open');
-    els.help.inert = false;
-    els.help.setAttribute('aria-hidden', 'false');
-  }
-  function closeHelp() {
-    els.help.classList.remove('open');
-    els.help.inert = true;
-    els.help.setAttribute('aria-hidden', 'true');
-  }
-  $('helpBtn').addEventListener('click', openHelp);
-  $('helpDone').addEventListener('click', closeHelp);
-  $('helpVersion').textContent = 'Tote · version ' + APP_VERSION;
+  window.HelpSheet.init({ version: APP_VERSION, onOpen: closeMenu });
 
   // ---------- currency ----------
   // Primary: ECB reference rates via Frankfurter. Fallback: ExchangeRate-API's open endpoint. Both keyless.
@@ -880,97 +882,111 @@
     onClose: () => { sizeApp(); relayout(); ensureFocus(); },
   });
 
-  // ---------- backup ----------
-  function updateDot() {
-    const overdue = !backup || Date.now() - backup.at > 14 * DAY;
-    const unsaved = updatedAt > (backup ? backup.at : 0);
-    els.dot.hidden = !(overdue && unsaved && text.split('\n').length >= 5);
+  // ---------- share ----------
+  // The page as text, answers included: "45 pizza + 18 drinks = bill (63)", "320 mi to km = 514.99 km".
+  function pageAsText() {
+    return text.split('\n').map((line, i) => {
+      const info = page.lines[i];
+      const ans = info && (info.status === 'answer' || info.status === 'live') ? resultText(info) : null;
+      if (!ans) return line;
+      if (info.defSyntax) return line.replace(/\s+$/, '') + ' (' + ans + ')';
+      return line.replace(/\s*=\s*$/, '') + ' = ' + ans;
+    }).join('\n').replace(/\s+$/, '');
   }
-  function renderBackupLine() {
-    const el = els.backupLine;
-    if (!backup) el.textContent = text ? 'Never backed up' : 'Nothing to back up yet';
-    else {
-      const d = Math.floor((Date.now() - backup.at) / DAY);
-      const when = d === 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago';
-      el.textContent = `Last backup ${when}` + (updatedAt > backup.at ? ' · page changed since' : '');
-    }
-    el.classList.toggle('warn', !els.dot.hidden);
-    els.diag.textContent = `Screen ${screen.width}×${screen.height} · view ${window.innerWidth}×${window.innerHeight} · ` +
-      `${navigator.standalone ? 'Home Screen app' : 'browser'} · version ${APP_VERSION}`;
-  }
-  function openSheet() {
-    closeMenu();
-    renderBackupLine();
-    els.sheet.classList.add('open');
-    els.sheet.inert = false;
-    els.sheet.setAttribute('aria-hidden', 'false');
-  }
-  function closeSheet() {
-    els.sheet.classList.remove('open');
-    els.sheet.inert = true;
-    els.sheet.setAttribute('aria-hidden', 'true');
-  }
-  $('backupBtn').addEventListener('click', openSheet);
-  $('sheetDone').addEventListener('click', closeSheet);
-  els.sheet.addEventListener('click', e => { if (e.target === els.sheet) closeSheet(); });
 
-  async function exportPage() {
-    const stamp = new Date().toISOString().slice(0, 10);
-    const body = JSON.stringify({ app: 'calc', version: 2, exportedAt: new Date().toISOString(), text, settings, fx });
-    // iOS share sheet ("Save to Files"). Some browsers won't share .json, so fall back to .txt, then to a download.
-    const candidates = [
-      new File([body], `tote-backup-${stamp}.json`, { type: 'application/json' }),
-      new File([body], `tote-backup-${stamp}.txt`, { type: 'text/plain' }),
-    ];
-    try {
-      const file = navigator.canShare && candidates.find(f => navigator.canShare({ files: [f] }));
-      if (file) {
-        await navigator.share({ files: [file] });
-      } else {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(candidates[0]);
-        a.download = candidates[0].name;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  // The page as a picture, drawn the way it looks on screen.
+  function pageAsImage() {
+    const lines = text.split('\n');
+    const S = 2, W = 390 * S, pad = 22 * S, gap = 10 * S;
+    const c = document.createElement('canvas');
+    const g = c.getContext('2d');
+    const family = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif';
+    const font = (px, bold) => `${bold ? 600 : 400} ${px}px ${family}`;
+    // Fit the widest line at up to 20px; never below 12px.
+    let fs = 20 * S;
+    const widthOf = (i, px) => {
+      const info = page.lines[i];
+      let w = 0;
+      for (const sg of segmentsFor(lines[i], info)) { g.font = font(px, sg.cls === 'v' || sg.cls === 'def'); w += g.measureText(sg.text).width; }
+      const ans = info && answerFor(info);
+      if (ans) { g.font = font(px, false); w += gap + g.measureText(ans.text).width + 16 * S; }
+      return w;
+    };
+    const widest = Math.max(1, ...lines.map((_, i) => widthOf(i, fs)));
+    fs = Math.max(12 * S, Math.min(fs, Math.floor(fs * (W - 2 * pad) / widest)));
+    const lh = fs * 1.5;
+    const H = pad * 2 + lines.length * lh + 30 * S;
+    c.width = W; c.height = H;
+    g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+    g.textBaseline = 'middle';
+    lines.forEach((line, i) => {
+      const info = page.lines[i], y = pad + i * lh + lh / 2;
+      let x = pad;
+      for (const sg of segmentsFor(line, info)) {
+        const name = sg.cls === 'v' || sg.cls === 'def';
+        g.font = font(fs, name);
+        g.fillStyle = name ? '#64d2ff' : sg.cls === 'arrow' ? '#8e8e93' : '#fff';
+        g.fillText(sg.text, x, y);
+        x += g.measureText(sg.text).width;
       }
-      backup = { at: Date.now() };
-      save(K.backup, backup);
-      updateDot();
-      renderBackupLine();
-      toast('Backup exported');
-    } catch (e) {
-      if (e && e.name !== 'AbortError') toast('Export failed');
-    }
+      const ans = info && answerFor(info);
+      if (ans && !ans.dim) {
+        g.font = font(fs, false);
+        const w = g.measureText(ans.text).width + 16 * S, h = lh * 0.92, px = W - pad - w;
+        g.fillStyle = ans.live ? 'rgba(255,159,10,0.10)' : 'rgba(255,159,10,0.14)';
+        g.beginPath(); g.roundRect(px, y - h / 2, w, h, 9 * S); g.fill();
+        g.fillStyle = ans.live ? 'rgba(255,159,10,0.7)' : '#ff9f0a';
+        g.fillText(ans.text, px + 8 * S, y);
+      }
+    });
+    g.font = font(11 * S, false); g.fillStyle = '#48484a';
+    g.fillText('Tote', pad, H - 15 * S);
+    return new Promise(resolve => c.toBlob(resolve, 'image/png'));
   }
 
-  async function importPage(file) {
+  function openShare() {
+    if (!text.trim()) { toast('Nothing to share yet'); return; }
+    closeMenu();
+    els.share.classList.add('open');
+    els.share.inert = false;
+    els.share.setAttribute('aria-hidden', 'false');
+  }
+  function closeShare() {
+    els.share.classList.remove('open');
+    els.share.inert = true;
+    els.share.setAttribute('aria-hidden', 'true');
+  }
+  $('shareBtn').addEventListener('click', openShare);
+  $('shareDone').addEventListener('click', closeShare);
+  els.share.addEventListener('click', e => { if (e.target === els.share) closeShare(); });
+
+  async function shareText() {
+    const body = pageAsText();
+    closeShare();
     try {
-      const data = JSON.parse(await file.text());
-      let incoming = '';
-      if (data && typeof data.text === 'string') incoming = data.text;
-      else if (data && Array.isArray(data.history)) incoming = E.migrateV1(data.history).join('\n'); // version 1 backup
-      incoming = E.modernizeNames(incoming.replace(/\s+$/, ''));
-      if (!incoming) { toast('That backup is empty'); return; }
-      if (text.includes(incoming)) { toast('That backup is already on the page'); return; }
-      pushUndo({ text, sel: sel.slice() }, 'import');
-      text = text ? text.replace(/\n+$/, '') + '\n' + incoming : incoming;
-      sel = [text.length, text.length];
-      changed();
-      closeSheet();
-      toast('Backup added to the end of the page');
+      if (navigator.share) await navigator.share({ text: body });
+      else if (navigator.clipboard) { await navigator.clipboard.writeText(body); toast('Copied the page as text'); }
+      else toast('Sharing isn’t available here');
     } catch (e) {
-      toast('That file isn’t a Tote backup');
+      if (e && e.name !== 'AbortError') toast('Couldn’t share');
     }
   }
-  $('exportBtn').addEventListener('click', exportPage);
-  $('importBtn').addEventListener('click', () => els.file.click());
-  els.file.addEventListener('change', () => {
-    const f = els.file.files && els.file.files[0];
-    els.file.value = '';
-    if (f) importPage(f);
-  });
+  async function shareImage() {
+    closeShare();
+    try {
+      const blob = await pageAsImage();
+      const file = new File([blob], 'tote.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file] });
+      else if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        toast('Copied the page as a picture');
+      } else toast('Sharing pictures isn’t available here');
+    } catch (e) {
+      if (e && e.name !== 'AbortError') toast('Couldn’t share');
+    }
+  }
+  $('shareText').addEventListener('click', shareText);
+  $('shareImage').addEventListener('click', shareImage);
 
   // ---------- toast ----------
   let toastTimer, toastAction = null;
@@ -1005,15 +1021,9 @@
 
   sizeApp();
   render();
-  updateDot();
   refreshFx(); // keep the saved rate fresh even when no line converts, so conversion works offline later
   if (notice) { saveNow(); toast(notice); }
-  if (settings.helpSeen < HELP_VERSION) {
-    // First launch of this version: show the guide once.
-    settings.helpSeen = HELP_VERSION;
-    save(K.settings, settings);
-    openHelp();
-  }
+  if (!saved) saveNow();
 
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if ('serviceWorker' in navigator) {

@@ -52,6 +52,15 @@ test('compound amounts and unit symbols', () => {
   close(conv('5 in in cm').value, 12.7);
 });
 
+test('feet come out as feet and inches', () => {
+  assert.equal(conv('180 cm to ft').text, '5 ft 10.9 in');
+  assert.equal(conv('2 m to ft').text, '6 ft 6.7 in');
+  assert.equal(conv('36 in to ft').text, '3 ft');
+  assert.equal(conv('1 mi to ft').text, '5280 ft');
+  close(conv('180 cm to ft').value, 5.906);          // the number itself stays decimal for chaining
+  assert.equal(U.feetInches(5.9999), '6 ft');
+});
+
 test('temperature', () => {
   close(conv('72 f to c').value, 22.22);
   close(conv('100 c to f').value, 212);

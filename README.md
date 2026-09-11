@@ -37,24 +37,32 @@ HTML/CSS/JS, no build step, no dependencies.
   Names show in blue; their chips above the keypad (most recent first) insert them (after a number, `×` is added).
   **Name…** above the keypad, or an answer's **Name**, names a line without the keyboard (writes `… = rent`, or
   `200 rent` for a plain number). Older `→ rent` / `=rent` lines are rewritten the current way on launch.
-- **Help:** the `?` button in the top bar opens a short guide. It also opens once after an update that changes how
-  things work (`HELP_VERSION` in `app.js`).
+- **Help:** the `?` button opens a guide made of example cards (`help.js`). The very first launch seeds the page with a
+  worked example (`EXAMPLE_PAGE` in `app.js`) instead.
 - **ABC** brings up the iPhone keyboard for words. The orange calculator button (top right) brings the keypad back.
-- **$₹** turns the current line into a conversion (`100 $→₹=`). Tap again to flip the direction.
-  Rates come from the ECB via Frankfurter, with ExchangeRate-API as a fallback. The last rate is saved for
-  offline use, and the rate line turns orange once it is more than a day old. Tap it to refresh.
+- **Conversions** (`units.js`): type `50 km to mi`, `5 ft 10 in to cm`, `180 cm to ft` (feet always show as feet and
+  inches), `72 f to c`, `100 $ to ₹`, `3 pm cst to ist`. Weight, length, speed, volume, area, fuel, temperature,
+  11 currencies and 16 time zones. The `⇄` key opens a sheet of two-way rows (`convert.js`); `+` writes the row onto
+  the page. Rates come from the ECB via Frankfurter, with ExchangeRate-API as a fallback; the last rate is saved for
+  offline use and the rate line turns orange once it is more than a day old (tap to refresh). The old `100 $→₹=`
+  form still works.
+- **Clear** wipes the page at once; the toast's Undo (or ↶) brings it back. Answers show 2 decimals; the tap menu
+  shows the full number.
 
-## Data & backups
-The page lives in the browser's storage on the phone, and iOS can wipe that.
-**Backup ▸ Export** saves a copy (use "Save to Files", e.g. iCloud Drive), and **Import** adds a saved copy to the
-end of the page. A red dot on the Backup button means a backup is overdue.
+## Share, and keeping a copy
+The share button sends the page **as text** (answers included: `45 pizza + 18 drinks = bill (63)`) or **as a picture**.
+Text shared to Notes or Messages doubles as a copy: paste it back onto the page and the answers are stripped off
+(`stripAnswers` in `engine.js`), so the lines calculate again. The page lives in the browser's storage on the phone,
+which iOS can wipe, so share it to Notes now and then.
 
 ## Files
-- `engine.js`: all maths (pure, tested)
-- `app.js`: editor, keypad, currency, backup
+- `engine.js`: the page rules and maths (pure, tested)
+- `units.js`: conversion table, currency and time zones (pure, tested)
+- `app.js`: editor, keypad, answers, names, currency rates, share
+- `convert.js`: the ⇄ sheet · `help.js`: the help cards
 - `style.css`, `index.html`, `manifest.webmanifest`, `icons/`
 - `sw.js`: offline cache
-- `tests/engine.test.js`: run `node --test tests/engine.test.js`
+- `tests/`: run `node --test tests/engine.test.js tests/units.test.js`
 - `tools/make_icons.py`: regenerates the icons (needs Pillow)
 
 ## Deploying a change
