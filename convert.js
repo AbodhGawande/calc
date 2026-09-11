@@ -12,13 +12,13 @@
   const SECTIONS = [
     ['Weight', [['lb', 'kg'], ['oz', 'g'], ['st', 'kg']]],
     ['Length', [['ftin', 'cm'], ['ftin', 'm'], ['in', 'cm'], ['yd', 'm'], ['mi', 'km']]],
-    ['Speed', [['mph', 'km/h']]],
-    ['Volume', [['gal', 'L'], ['fl oz', 'ml'], ['cup', 'ml'], ['tbsp', 'ml'], ['tsp', 'ml']]],
-    ['Temperature', [['°F', '°C']]],
-    ['Area', [['sq ft', 'sq m'], ['acre', 'ha'], ['acre', 'sq ft']]],
-    ['Fuel', [['mpg', 'km/L']]],
     ['Currency', [['money']]],
+    ['Temperature', [['°F', '°C']]],
+    ['Volume', [['gal', 'L'], ['fl oz', 'ml'], ['cup', 'ml'], ['tbsp', 'ml'], ['tsp', 'ml']]],
     ['Time zones', [['time']]],
+    ['Speed', [['mph', 'km/h']]],
+    ['Fuel', [['mpg', 'km/L']]],
+    ['Area', [['sq ft', 'sq m'], ['acre', 'ha'], ['acre', 'sq ft']]],
   ];
   const CURRENCIES = ['USD', 'INR', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'SGD', 'AED', 'CHF', 'CNY'];
   const SYMBOL = { USD: '$', INR: '₹', EUR: '€', GBP: '£', JPY: '¥' };
@@ -112,15 +112,16 @@
   }
 
   let rateNote = null;
+  // Currency gets a highlighted block of its own, one row per side so big numbers fit.
   function moneyRow() {
-    const row = el('div', 'c-row');
+    const row = el('div', 'c-block c-money');
     const ia = numInput(), ib = numInput();
     const sa = select(CURRENCIES.map(c => [c, c]), prefs.cur[0]), sb = select(CURRENCIES.map(c => [c, c]), prefs.cur[1]);
     const sideA = el('div', 'c-side'), sideB = el('div', 'c-side');
-    sideA.append(ia, sa);
-    sideB.append(ib, sb);
+    sideA.append(ia, sa, el('span', 'c-arrow-v', '⇅'));
     const add = el('button', 'c-add', '+');
-    row.append(sideA, el('span', 'c-arrow', '⇄'), sideB, add);
+    sideB.append(ib, sb, add);
+    row.append(sideA, sideB);
     let last = 'a';
     const ctx = () => ({ rates: deps.rates() });
     const recalc = () => {
@@ -144,11 +145,9 @@
     });
     rateNote = el('button', 'c-note');
     rateNote.addEventListener('click', () => deps.refreshRates());
-    const wrap = el('div');
-    wrap.append(row, rateNote);
-    updateRateNote(sa, sb);
-    row._sel = [sa, sb];
-    return wrap;
+    row.appendChild(rateNote);
+    updateRateNote();
+    return row;
   }
   function updateRateNote() {
     if (!rateNote) return;
@@ -160,18 +159,19 @@
     rateNote.classList.toggle('stale', d >= 1);
   }
 
+  // Time zones: one row per side too, so the time picker and the zone name have room.
   function timeRow() {
-    const row = el('div', 'c-row');
+    const row = el('div', 'c-block');
     const zones = U.ZONES.map(([zone, lbl]) => [zone, lbl]);
     const ta = el('input', 'c-in'), tb = el('input', 'c-in');
     ta.type = tb.type = 'time';
     const sa = select(zones, prefs.zone[0]), sb = select(zones, prefs.zone[1]);
     const shiftA = el('span', 'c-shift'), shiftB = el('span', 'c-shift');
     const sideA = el('div', 'c-side'), sideB = el('div', 'c-side');
-    sideA.append(ta, sa, shiftA);
-    sideB.append(tb, sb, shiftB);
+    sideA.append(ta, sa, shiftA, el('span', 'c-arrow-v', '⇅'));
     const add = el('button', 'c-add', '+');
-    row.append(sideA, el('span', 'c-arrow', '⇄'), sideB, add);
+    sideB.append(tb, sb, shiftB, add);
+    row.append(sideA, sideB);
     let last = 'a';
     const zoneOf = s => { const z = U.ZONES.find(x => x[0] === s.value); return { zone: z[0], label: z[1] }; };
     const recalc = () => {

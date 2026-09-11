@@ -28,6 +28,8 @@
       lines: [['4|5 + 18 + 12=', '75']] },
     { cap: 'Clear wipes the page (Undo brings it back). Share sends the page as text or a picture.',
       bar: true },
+    { cap: 'Each new day gets a date line, so an old page stays readable.',
+      lines: [['45 + 18 + 12=', '75'], ['', ''], ['— Fri, Sep 11, 2026', ''], ['320 mi to km', '~514.99 km']] },
   ];
 
   const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
@@ -41,6 +43,7 @@
       if (!p) continue;
       if (p === '|') txt.appendChild(el('span', 'hc-caret'));
       else if (p.startsWith('[[')) txt.appendChild(el('span', 'v', p.slice(2, -2)));
+      else if (p.startsWith('— ')) txt.appendChild(el('span', 'divider', p));
       else txt.appendChild(document.createTextNode(p));
     }
     ln.appendChild(txt);

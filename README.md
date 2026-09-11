@@ -48,6 +48,9 @@ HTML/CSS/JS, no build step, no dependencies.
   form still works.
 - **Clear** wipes the page at once; the toast's Undo (or ↶) brings it back. Answers show 2 decimals; the tap menu
   shows the full number.
+- **Date lines:** the first thing typed at the end of the page on a new day is preceded by `— Fri, Sep 11, 2026`
+  (`dividerFor` in `engine.js`). A date line counts as a blank line: it breaks multi-line sums and sets no names.
+- The page is focused at launch, so the cursor shows before the first key.
 
 ## Share, and keeping a copy
 The share button sends the page **as text** (answers included: `45 pizza + 18 drinks = bill (63)`) or **as a picture**.
@@ -58,7 +61,8 @@ which iOS can wipe, so share it to Notes now and then.
 ## Files
 - `engine.js`: the page rules and maths (pure, tested)
 - `units.js`: conversion table, currency and time zones (pure, tested)
-- `app.js`: editor, keypad, answers, names, currency rates, share
+- `app.js`: editor, keypad, answers, names
+- `rates.js`: exchange rates (fetch, cache, rate line) · `share.js`: share as text/picture
 - `convert.js`: the ⇄ sheet · `help.js`: the help cards
 - `style.css`, `index.html`, `manifest.webmanifest`, `icons/`
 - `sw.js`: offline cache

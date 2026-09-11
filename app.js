@@ -1,4 +1,5 @@
-/* Tote — the note page: editor, keypad, answers, names, currency, share. All maths lives in engine.js.
+/* Tote — the note page: editor, keypad, answers, names. Maths: engine.js + units.js. Rates: rates.js.
+   Share: share.js. The ⇄ sheet: convert.js. Help: help.js.
 
    The page is plain text (lines joined by "\n"). The editor shows one <div class="ln"> per line, split into
    plain text and styled pieces (names in blue, the → of a named line). Answers are NOT in the editor: they are
@@ -10,15 +11,15 @@
 
   const E = window.CalcEngine;
   const fmt = E.makeFormatter();
-  const MIN = 60000, HOUR = 60 * MIN, DAY = 24 * HOUR;
+  const MIN = 60000;
   const OPS = '+−×÷-*/';
   const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
-  const APP_VERSION = 13; // shown at the bottom of the help page; bump together with VERSION in sw.js
+  const APP_VERSION = 14; // shown at the bottom of the help page; bump together with VERSION in sw.js
   const FS_MIN = 22, FS_MAX = 36; // page text size: starts at FS_MAX, never smaller than FS_MIN
 
   // ---------- storage ----------
-  // localStorage is the only store. iOS may wipe it, so Backup ▸ Export is the safety net.
-  const K = { note: 'calc.note', settings: 'calc.settings', fx: 'calc.fx', v1: 'calc.history' };
+  // localStorage is the only store. iOS may wipe it; sharing the page to Notes is the safety net.
+  const K = { note: 'calc.note', settings: 'calc.settings', v1: 'calc.history' };
   function load(key, fallback) {
     try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); } catch (e) { return fallback; }
   }
@@ -48,7 +49,7 @@
     app: $('app'), scroller: $('scroller'), note: $('note'), answers: $('answers'),
     keypad: $('keypad'), fxBar: $('fxBar'), vars: $('vars'), varChips: $('varChips'), menu: $('menu'), menuFull: $('menuFull'),
     nameBox: $('nameBox'), nbValue: $('nbValue'), nbInput: $('nbInput'), nbError: $('nbError'), nbRemove: $('nbRemove'),
-    undo: $('undoBtn'), share: $('shareSheet'), toast: $('toast'),
+    undo: $('undoBtn'), toast: $('toast'),
   };
 
   // ---------- state ----------
@@ -72,8 +73,6 @@
   if (modern !== text) { text = modern; updatedAt = Date.now(); notice = notice || 'Named lines now read “= name”'; }
   let sel = saved && Array.isArray(saved.sel) ? saved.sel.map(n => Math.max(0, Math.min(text.length, n | 0))) : [text.length, text.length];
   const settings = Object.assign({}, load(K.settings, {}));
-  let fx = load(K.fx, null);
-  let fxBusy = false;
   let textMode = false;
   let page = { lines: [], vars: new Map() }; // the latest E.evaluatePage result
 
@@ -119,6 +118,7 @@
   // Split a line into plain text and styled pieces: 'v' = a name in use, 'arrow' = the → of a named line,
   // 'def' = the name this line sets.
   function segmentsFor(line, info) {
+    if (info.divider) return [{ text: line, cls: 'divider' }];
     const marks = info.names.map(([s, e]) => [s, e, 'v']);
     for (const [s, e] of info.notes || []) marks.push([s, e, 'def']); // "500 food": food becomes a name
     const d = info.defSyntax;
@@ -163,7 +163,7 @@
   // text → DOM, touching only lines whose pieces changed. Returns true if any line was rebuilt.
   function render() {
     const lines = text.split('\n');
-    page = E.evaluatePage(lines, { rates: fx && fx.rates, now: new Date() });
+    page = E.evaluatePage(lines, { rates: window.Rates.rates(), now: new Date() });
     const note = els.note;
     let rebuilt = false, anyConv = false;
     if (![...note.childNodes].every(n => n.nodeName === 'DIV')) { note.textContent = ''; rebuilt = true; }
@@ -178,7 +178,7 @@
     });
     relayout();
     renderChips();
-    renderFx(anyConv);
+    window.Rates.renderBar(els.fxBar, anyConv);
     return rebuilt;
   }
   function refresh() { if (render()) applySel(); }
@@ -471,9 +471,23 @@
     insert('');
   }
 
+  // The first edit of a new day, at the end of the page, gets a date line first ("— Fri, Sep 11, 2026"),
+  // so an old page stays readable. Edits in the middle of the page don't.
+  function dayDivider() {
+    if (!text.trim() || sel[0] !== sel[1] || sel[1] < text.replace(/\s+$/, '').length) return;
+    const today = new Date();
+    if (updatedAt && new Date(updatedAt).toDateString() === today.toDateString()) return;
+    const div = E.dividerFor(today);
+    const lines = text.split('\n');
+    if (lines.some(l => l === div)) return;
+    text = text.replace(/\s+$/, '') + '\n\n' + div + '\n';
+    sel = [text.length, text.length];
+  }
+
   // The ⇄ sheet writes a finished conversion line ("10 lb to kg") on its own line at the cursor.
   function insertLine(str) {
     syncSel();
+    dayDivider();
     const before = { text, sel: sel.slice() };
     const { s, e, line } = lineAt(sel[1]);
     if (line.trim()) { sel = [e, e]; insert('\n'); }
@@ -490,6 +504,7 @@
     syncSel();
     const before = { text, sel: sel.slice() };
     let kind = 'key';
+    if (k !== 'back') dayDivider();
     if (/^[0-9]$/.test(k) || k === '00' || k === '.' || k === '(') {
       if (k !== '(') kind = 'type';
       if (afterAnswer()) newLine(); // a new number after an answer starts a new line, as on a calculator
@@ -509,6 +524,7 @@
   function insertToken(str) {
     syncSel();
     const before = { text, sel: sel.slice() };
+    dayDivider();
     if (afterAnswer()) newLine();
     const prev = sel[0] === sel[1] ? text[sel[0] - 1] : '';
     if (prev && /[\p{L}\p{N}_)%.]/u.test(prev)) insert('×');
@@ -728,6 +744,11 @@
   function setTextMode(on) {
     closeMenu();
     syncSel();
+    if (on) {
+      const before = { text, sel: sel.slice() };
+      dayDivider();
+      if (text !== before.text) { pushUndo(before, 'key'); changed(); }
+    }
     textMode = on;
     els.app.classList.toggle('textmode', on);
     els.note.setAttribute('inputmode', on ? 'text' : 'none');
@@ -790,203 +811,21 @@
   // ---------- help ----------
   window.HelpSheet.init({ version: APP_VERSION, onOpen: closeMenu });
 
-  // ---------- currency ----------
-  // Primary: ECB reference rates via Frankfurter. Fallback: ExchangeRate-API's open endpoint. Both keyless.
-  const FX_SOURCES = [
-    {
-      name: 'ECB (Frankfurter)',
-      url: 'https://api.frankfurter.dev/v1/latest?base=USD',
-      parse: j => (j && j.rates ? { rates: Object.assign({}, j.rates), date: j.date } : null),
-    },
-    {
-      name: 'ExchangeRate-API',
-      url: 'https://open.er-api.com/v6/latest/USD',
-      parse: j => (j && j.result === 'success' && j.rates
-        ? { rates: Object.assign({}, j.rates), date: new Date(j.time_last_update_unix * 1000).toISOString().slice(0, 10) }
-        : null),
-    },
-  ];
-
-  function rate(from, to) {
-    if (!fx || !fx.rates) return null;
-    const a = fx.rates[from], b = fx.rates[to];
-    return a > 0 && b > 0 ? b / a : null;
-  }
-  const moneyFmts = {};
-  function money(v, cur) {
-    const f = moneyFmts[cur] || (moneyFmts[cur] = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }));
-    return f.format(v).replace('-', '−');
-  }
-
-  function freshness(age) {
-    const m = Math.floor(age / MIN), h = Math.floor(age / HOUR), d = Math.floor(age / DAY);
-    if (age >= DAY) return `⚠ rate is ${d} day${d > 1 ? 's' : ''} old`;
-    if (h >= 1) return `updated ${h} h ago`;
-    if (m >= 1) return `updated ${m} min ago`;
-    return 'updated just now';
-  }
-
-  function renderFx(show) {
-    els.fxBar.hidden = !show;
-    if (!show) return;
-    const r = rate('USD', 'INR');
-    let txt, stale = false;
-    if (r == null) {
-      txt = fxBusy ? 'Fetching the exchange rate…' : 'No exchange rate yet — go online once';
-      stale = !fxBusy;
-    } else {
-      const age = Date.now() - fx.fetchedAt;
-      stale = age >= DAY;
-      txt = `1 USD = ${money(r, 'INR')} · ${fxBusy ? 'updating…' : freshness(age)}`;
-    }
-    els.fxBar.textContent = txt;
-    els.fxBar.classList.toggle('stale', stale);
-  }
-
-  async function refreshFx({ force = false, quiet = true } = {}) {
-    if (fxBusy) return;
-    if (!force && fx && Date.now() - fx.fetchedAt < HOUR) return;
-    fxBusy = true;
-    refresh();
-    let ok = false;
-    for (const src of FX_SOURCES) {
-      try {
-        const ctl = new AbortController();
-        const timer = setTimeout(() => ctl.abort(), 8000);
-        const res = await fetch(src.url, { signal: ctl.signal, cache: 'no-store' });
-        clearTimeout(timer);
-        if (!res.ok) continue;
-        const got = src.parse(await res.json());
-        if (!got) continue;
-        got.rates.USD = 1;
-        if (!(got.rates.INR > 0)) continue;
-        fx = { rates: got.rates, date: got.date, fetchedAt: Date.now(), source: src.name };
-        save(K.fx, fx);
-        ok = true;
-        break;
-      } catch (e) {
-        // offline or this source is down — try the next one
-      }
-    }
-    fxBusy = false;
-    refresh();
-    if (!quiet) toast(ok ? 'Rate updated' : 'Couldn’t reach the rate service — using the saved rate');
-  }
-  els.fxBar.addEventListener('click', () => refreshFx({ force: true, quiet: false }));
+  // ---------- currency rates (rates.js) and share (share.js) ----------
+  window.Rates.init({ onChange: refresh, toast });
+  window.Share.init({
+    text: () => text, page: () => page, segmentsFor, answerFor, resultText, toast, onOpen: closeMenu,
+  });
+  const money = window.Rates.money;
 
   window.ConvertSheet.init({
-    rates: () => (fx ? fx.rates : null),
-    rateAge: () => (fx ? Date.now() - fx.fetchedAt : null),
-    refreshRates: () => refreshFx({ force: true, quiet: false }),
+    rates: window.Rates.rates,
+    rateAge: window.Rates.age,
+    refreshRates: () => window.Rates.refresh({ force: true, quiet: false }),
     money, short: v => fmt.short(v), insertLine, toast,
     onClose: () => { sizeApp(); relayout(); ensureFocus(); },
   });
-
-  // ---------- share ----------
-  // The page as text, answers included: "45 pizza + 18 drinks = bill (63)", "320 mi to km = 514.99 km".
-  function pageAsText() {
-    return text.split('\n').map((line, i) => {
-      const info = page.lines[i];
-      const ans = info && (info.status === 'answer' || info.status === 'live') ? resultText(info) : null;
-      if (!ans) return line;
-      if (info.defSyntax) return line.replace(/\s+$/, '') + ' (' + ans + ')';
-      return line.replace(/\s*=\s*$/, '') + ' = ' + ans;
-    }).join('\n').replace(/\s+$/, '');
-  }
-
-  // The page as a picture, drawn the way it looks on screen.
-  function pageAsImage() {
-    const lines = text.split('\n');
-    const S = 2, W = 390 * S, pad = 22 * S, gap = 10 * S;
-    const c = document.createElement('canvas');
-    const g = c.getContext('2d');
-    const family = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif';
-    const font = (px, bold) => `${bold ? 600 : 400} ${px}px ${family}`;
-    // Fit the widest line at up to 20px; never below 12px.
-    let fs = 20 * S;
-    const widthOf = (i, px) => {
-      const info = page.lines[i];
-      let w = 0;
-      for (const sg of segmentsFor(lines[i], info)) { g.font = font(px, sg.cls === 'v' || sg.cls === 'def'); w += g.measureText(sg.text).width; }
-      const ans = info && answerFor(info);
-      if (ans) { g.font = font(px, false); w += gap + g.measureText(ans.text).width + 16 * S; }
-      return w;
-    };
-    const widest = Math.max(1, ...lines.map((_, i) => widthOf(i, fs)));
-    fs = Math.max(12 * S, Math.min(fs, Math.floor(fs * (W - 2 * pad) / widest)));
-    const lh = fs * 1.5;
-    const H = pad * 2 + lines.length * lh + 30 * S;
-    c.width = W; c.height = H;
-    g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
-    g.textBaseline = 'middle';
-    lines.forEach((line, i) => {
-      const info = page.lines[i], y = pad + i * lh + lh / 2;
-      let x = pad;
-      for (const sg of segmentsFor(line, info)) {
-        const name = sg.cls === 'v' || sg.cls === 'def';
-        g.font = font(fs, name);
-        g.fillStyle = name ? '#64d2ff' : sg.cls === 'arrow' ? '#8e8e93' : '#fff';
-        g.fillText(sg.text, x, y);
-        x += g.measureText(sg.text).width;
-      }
-      const ans = info && answerFor(info);
-      if (ans && !ans.dim) {
-        g.font = font(fs, false);
-        const w = g.measureText(ans.text).width + 16 * S, h = lh * 0.92, px = W - pad - w;
-        g.fillStyle = ans.live ? 'rgba(255,159,10,0.10)' : 'rgba(255,159,10,0.14)';
-        g.beginPath(); g.roundRect(px, y - h / 2, w, h, 9 * S); g.fill();
-        g.fillStyle = ans.live ? 'rgba(255,159,10,0.7)' : '#ff9f0a';
-        g.fillText(ans.text, px + 8 * S, y);
-      }
-    });
-    g.font = font(11 * S, false); g.fillStyle = '#48484a';
-    g.fillText('Tote', pad, H - 15 * S);
-    return new Promise(resolve => c.toBlob(resolve, 'image/png'));
-  }
-
-  function openShare() {
-    if (!text.trim()) { toast('Nothing to share yet'); return; }
-    closeMenu();
-    els.share.classList.add('open');
-    els.share.inert = false;
-    els.share.setAttribute('aria-hidden', 'false');
-  }
-  function closeShare() {
-    els.share.classList.remove('open');
-    els.share.inert = true;
-    els.share.setAttribute('aria-hidden', 'true');
-  }
-  $('shareBtn').addEventListener('click', openShare);
-  $('shareDone').addEventListener('click', closeShare);
-  els.share.addEventListener('click', e => { if (e.target === els.share) closeShare(); });
-
-  async function shareText() {
-    const body = pageAsText();
-    closeShare();
-    try {
-      if (navigator.share) await navigator.share({ text: body });
-      else if (navigator.clipboard) { await navigator.clipboard.writeText(body); toast('Copied the page as text'); }
-      else toast('Sharing isn’t available here');
-    } catch (e) {
-      if (e && e.name !== 'AbortError') toast('Couldn’t share');
-    }
-  }
-  async function shareImage() {
-    closeShare();
-    try {
-      const blob = await pageAsImage();
-      const file = new File([blob], 'tote.png', { type: 'image/png' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file] });
-      else if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-        toast('Copied the page as a picture');
-      } else toast('Sharing pictures isn’t available here');
-    } catch (e) {
-      if (e && e.name !== 'AbortError') toast('Couldn’t share');
-    }
-  }
-  $('shareText').addEventListener('click', shareText);
-  $('shareImage').addEventListener('click', shareImage);
+  els.fxBar.addEventListener('click', () => window.Rates.refresh({ force: true, quiet: false }));
 
   // ---------- toast ----------
   let toastTimer, toastAction = null;
@@ -1013,15 +852,15 @@
   document.addEventListener('gesturestart', e => e.preventDefault());
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) saveNow();
-    else { refreshFx(); refresh(); }
+    else { window.Rates.refresh(); refresh(); if (!textMode) ensureFocus(); }
   });
   window.addEventListener('pagehide', saveNow);
-  window.addEventListener('online', () => refreshFx());
   setInterval(() => { if (!document.hidden) refresh(); }, MIN); // keeps "updated N min ago" current
 
   sizeApp();
   render();
-  refreshFx(); // keep the saved rate fresh even when no line converts, so conversion works offline later
+  ensureFocus(); // the cursor shows where typing will land, before the first key
+  window.Rates.refresh(); // keep the saved rate fresh even when no line converts, so conversion works offline later
   if (notice) { saveNow(); toast(notice); }
   if (!saved) saveNow();
 

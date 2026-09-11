@@ -197,6 +197,9 @@
   }
 
   const isFinished = line => !!defOf(line) || /=\s*$/.test(line);
+  // "— Fri, Sep 11, 2026": a date divider the app writes on the first edit of a new day. Counts as a blank line.
+  const isDivider = line => /^—(\s|$)/.test(line);
+  const dividerFor = date => '— ' + new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(date);
 
   // The operator a line ends with ("500 rent+" → '+'), or null. Only for unfinished lines.
   function trailingOp(line) {
@@ -337,9 +340,10 @@
     const setVar = (name, value) => { const k = name.toLowerCase(); vars.delete(k); vars.set(k, { name, value }); };
     const out = [];
     let running = null, blockOp = false, pendingOp = null;
+    const isBlank = line => !line.trim() || isDivider(line);
     lines.forEach((line, i) => {
-      const blank = !line.trim();
-      const cont = !blank && i > 0 && !!lines[i - 1].trim() && isContinuation(line, vars, !!pendingOp);
+      const blank = isBlank(line);
+      const cont = !blank && i > 0 && !isBlank(lines[i - 1]) && isContinuation(line, vars, !!pendingOp);
       if (!cont) { running = null; blockOp = false; }
       const leadOp = cont && !CONT_START.test(line) ? pendingOp : null;
       const a = blank ? null : lineCalc(line, vars, running, cont, leadOp);
@@ -366,7 +370,7 @@
       if (defined) setVar(defSyntax.name, value);
       out.push({
         a, value, result, conv: a ? a.conv : null, def: defined, defSyntax, names, notes: notes.map(n => [n.pos, n.end]),
-        finished, wantsAnswer: finished, cont, blockOp,
+        finished, wantsAnswer: finished, cont, blockOp, divider: isDivider(line),
       });
     });
     out.forEach((o, i) => {
@@ -461,6 +465,7 @@
 
   const api = {
     SYMBOL, tokenize, parse, evaluate, defOf, analyzeLine, openValue, nameLine, modernizeNames, stripAnswers, isValidName,
+    isDivider, dividerFor,
     evaluatePage, continueLine, migrateV1, makeFormatter, rawString,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

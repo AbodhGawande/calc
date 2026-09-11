@@ -73,6 +73,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 /* names stand out from numbers: blue and bolder, both where they're set and where they're used */
 .v, .def { color: var(--name); font-weight: 600; }
 .arrow { color: var(--dim); }
+.divider { color: var(--dim); font-size: 0.68em; letter-spacing: 0.04em; }
 
 /* answers sit in a column on the right, outside the editable text, so the cursor never lands beside one */
 .answers { position: absolute; top: 0; left: 0; right: 0; height: 0; pointer-events: none; }
@@ -331,3 +332,10 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .c-note { font-size: 12px; color: var(--dim); padding: 0 0 4px; }
 .c-note.stale { color: var(--op); }
 .c-shift { flex: none; font-size: 13px; color: var(--op); width: 22px; }
+.c-block { display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 8px; margin: 4px 0; border-radius: 14px; background: #262628; }
+.c-block .c-side { gap: 8px; }
+.c-block .c-sel { max-width: none; min-width: 84px; }
+.c-arrow-v { flex: none; width: 34px; text-align: center; color: var(--dim); font-size: 17px; }
+.c-money { background: rgba(255, 159, 10, 0.12); box-shadow: inset 0 0 0 1px rgba(255, 159, 10, 0.35); }
+.c-money .c-in { background: rgba(0, 0, 0, 0.35); }
+.c-money .c-note { padding: 2px 4px 0; }

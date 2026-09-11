@@ -305,3 +305,15 @@ test('pasting shared text strips the answers back off', () => {
   ].join('\n'));
   assert.equal(E.stripAnswers('plain words'), 'plain words');
 });
+
+test('date dividers break calculations and never become names or answers', () => {
+  const div = E.dividerFor(new Date('2026-09-11T12:00:00'));
+  assert.ok(E.isDivider(div));
+  assert.ok(div.startsWith('— '));
+  assert.ok(!E.isDivider('—5+5'));
+  const p = E.evaluatePage(['500', div, '+200', '2024 sales']);
+  assert.deepEqual(values(p), [500, null, 200, 2024]);
+  assert.deepEqual(statuses(p), [null, null, null, null]);
+  assert.equal(p.lines[1].divider, true);
+  assert.equal(p.vars.size, 1); // "sales"; nothing from the divider's words
+});
