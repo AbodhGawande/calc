@@ -131,7 +131,7 @@
       const [from, to, src, dst] = last === 'a' ? [sa.value, sb.value, ia, ib] : [sb.value, sa.value, ib, ia];
       const v = parseNum(src.value);
       const r = v == null ? null : U.convert([[v, from]], to, ctx());
-      dst.value = r ? (to === 'INR' ? window.Rates.plainINR(r.value) : show(r.value)) : '';
+      dst.value = r ? window.Rates.plainMoney(r.value, to) : '';
       updateRateNote();
     };
     ia.addEventListener('input', () => { last = 'a'; recalc(); });
