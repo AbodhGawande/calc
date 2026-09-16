@@ -42,6 +42,16 @@
   // Build one line of page text for a row, from the side that was typed in.
   const lineFor = (amt, from, to) => `${deps.short(amt).replace(/,/g, '')} ${from} to ${to}`;
 
+  // Group the digits of what's being typed ("2000000" → "2,000,000"; INR → "20,00,000"), keeping a
+  // half-typed decimal part as it is. The caret stays at the end, which is where typing happens.
+  function groupTyped(input, cur) {
+    const raw = input.value.replace(/,/g, '');
+    const m = /^(\d+)(\.\d*)?$/.exec(raw);
+    if (!m) return;
+    const grouped = window.Rates.plainMoney(+m[1], cur) + (m[2] || '');
+    if (grouped !== input.value) input.value = grouped;
+  }
+
   function pairRow(a, b) {
     const row = el('div', 'c-row');
     const ia = numInput(), ib = numInput();
@@ -51,8 +61,8 @@
     const add = el('button', 'c-add', '+');
     row.append(sideA, el('span', 'c-arrow', '⇄'), sideB, add);
     let last = 'a';
-    ia.addEventListener('input', () => { last = 'a'; const v = parseNum(ia.value); const r = v == null ? null : U.convert([[v, a]], b); ib.value = r ? show(r.value) : ''; });
-    ib.addEventListener('input', () => { last = 'b'; const v = parseNum(ib.value); const r = v == null ? null : U.convert([[v, b]], a); ia.value = r ? show(r.value) : ''; });
+    ia.addEventListener('input', () => { last = 'a'; groupTyped(ia, a); const v = parseNum(ia.value); const r = v == null ? null : U.convert([[v, a]], b); ib.value = r ? show(r.value) : ''; });
+    ib.addEventListener('input', () => { last = 'b'; groupTyped(ib, b); const v = parseNum(ib.value); const r = v == null ? null : U.convert([[v, b]], a); ia.value = r ? show(r.value) : ''; });
     add.addEventListener('click', () => {
       const src = last === 'a' ? [ia, a, b] : [ib, b, a];
       const v = parseNum(src[0].value);
@@ -75,6 +85,7 @@
     let last = 'a';
     const fromFtIn = () => {
       last = 'a';
+      groupTyped(ift, big);
       const f = parseNum(ift.value) || 0, i = parseNum(iin.value) || 0;
       if (!ift.value && !iin.value) { icm.value = ''; return; }
       const r = U.convert([[f, big], [i, small]], b);
@@ -84,11 +95,12 @@
     iin.addEventListener('input', fromFtIn);
     icm.addEventListener('input', () => {
       last = 'b';
+      groupTyped(icm, b);
       const v = parseNum(icm.value);
       if (v == null) { ift.value = iin.value = ''; return; }
       const totalIn = U.convert([[v, b]], small).value;
       const f = Math.floor(totalIn / per), i = totalIn - f * per;
-      ift.value = String(f);
+      ift.value = window.Rates.plainMoney(f, big);
       const k = 10 ** dec;
       iin.value = show(Math.round(i * k) / k);
     });
@@ -112,16 +124,6 @@
     for (const [v, text] of options) { const o = el('option', '', text); o.value = v; s.appendChild(o); }
     s.value = value;
     return s;
-  }
-
-  // Group the digits of what's being typed ("2000000" → "2,000,000"; INR → "20,00,000"), keeping a
-  // half-typed decimal part as it is. The caret stays at the end, which is where typing happens.
-  function groupTyped(input, cur) {
-    const raw = input.value.replace(/,/g, '');
-    const m = /^(\d+)(\.\d*)?$/.exec(raw);
-    if (!m) return;
-    const grouped = window.Rates.plainMoney(+m[1], cur) + (m[2] || '');
-    if (grouped !== input.value) input.value = grouped;
   }
 
   let rateNote = null;

@@ -14,7 +14,7 @@
   const MIN = 60000;
   const OPS = '+−×÷-*/';
   const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
-  const APP_VERSION = 22; // shown at the bottom of the help page; bump together with VERSION in sw.js
+  const APP_VERSION = 23; // shown at the bottom of the help page; bump together with VERSION in sw.js
   const FS_MIN = 22, FS_MAX = 36; // page text size: starts at FS_MAX, never smaller than FS_MIN
 
   // ---------- storage ----------
@@ -475,6 +475,31 @@
     insert('');
   }
 
+  // US digit grouping as you type on the keypad: 200000 → 200,000, like the iPhone calculator. Only the number
+  // at the caret and only its whole part: a fraction being typed stays as it is, and so do dates, times and
+  // phone numbers (a - / : next to the number). Numbers typed with the ABC keyboard are left alone unless
+  // they already carry commas (onlyIfGrouped, used after a backspace).
+  function groupAtCaret(onlyIfGrouped) {
+    if (sel[0] !== sel[1]) return;
+    const c = sel[0];
+    let s = c, e = c;
+    while (s > 0 && /[\d,]/.test(text[s - 1])) s--;
+    while (e < text.length && /[\d,]/.test(text[e])) e++;
+    const run = text.slice(s, e);
+    if (!/\d/.test(run) || (onlyIfGrouped && !run.includes(','))) return;
+    if (text[s - 1] === '.' || /[-/:]/.test(text[s - 1] || '') || /[-/:]/.test(text[e] || '')) return;
+    const digits = run.replace(/,/g, '');
+    if (!/^\d+$/.test(digits)) return;
+    const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    if (grouped === run) return;
+    // Keep the caret after the same digit it was after.
+    const digitsBefore = run.slice(0, c - s).replace(/,/g, '').length;
+    let pos = 0, seen = 0;
+    while (pos < grouped.length && seen < digitsBefore) { if (grouped[pos] !== ',') seen++; pos++; }
+    text = text.slice(0, s) + grouped + text.slice(e);
+    sel = [s + pos, s + pos];
+  }
+
   // The first edit of a new day, at the end of the page, gets a date line first ("— Fri, Sep 11, 2026"),
   // so an old page stays readable. Edits in the middle of the page don't.
   function dayDivider() {
@@ -513,10 +538,11 @@
       if (k !== '(') kind = 'type';
       if (afterAnswer()) newLine(); // a new number after an answer starts a new line, as on a calculator
       insert(k);
+      if (k !== '(') groupAtCaret(false);
     } else if (k === ')' || k === '%') insert(k);
     else if (OPMAP[k]) operator(OPMAP[k]);
     else if (k === '=') equals();
-    else if (k === 'back') { kind = 'back'; backspace(); }
+    else if (k === 'back') { kind = 'back'; backspace(); groupAtCaret(true); }
     else if (k === 'enter') insert('\n');
     else return;
     const textChanged = text !== before.text;
@@ -533,6 +559,7 @@
     const prev = sel[0] === sel[1] ? text[sel[0] - 1] : '';
     if (prev && /[\p{L}\p{N}_)%.]/u.test(prev)) insert('×');
     insert(str);
+    if (/^\d/.test(str)) groupAtCaret(false); // a number from Use: 1000000 → 1,000,000
     pushUndo(before, 'key');
     changed();
     ensureFocus();
