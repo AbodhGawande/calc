@@ -31,11 +31,15 @@
     const a = fx.rates[from], b = fx.rates[to];
     return a > 0 && b > 0 ? b / a : null;
   }
+  // Rupees use Indian grouping (₹2,20,70,800.00); everything else the phone's usual grouping.
   const moneyFmts = {};
   function money(v, cur) {
-    const f = moneyFmts[cur] || (moneyFmts[cur] = new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }));
+    const f = moneyFmts[cur] || (moneyFmts[cur] = new Intl.NumberFormat(cur === 'INR' ? 'en-IN' : undefined, { style: 'currency', currency: cur }));
     return f.format(v).replace('-', '−');
   }
+  const inrPlain = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+  // A plain number in Indian grouping (for the ⇄ sheet's INR box): 2,20,70,800
+  const plainINR = v => inrPlain.format(Number(v.toPrecision(14))).replace('-', '−');
 
   function freshness(ms) {
     const m = Math.floor(ms / MIN), h = Math.floor(ms / HOUR), d = Math.floor(ms / DAY);
@@ -98,5 +102,5 @@
     window.addEventListener('online', () => refresh());
   }
 
-  window.Rates = { init, rates, age, rate, money, renderBar, refresh, busy: () => busy };
+  window.Rates = { init, rates, age, rate, money, plainINR, renderBar, refresh, busy: () => busy };
 })();
