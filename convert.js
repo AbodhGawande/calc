@@ -114,6 +114,16 @@
     return s;
   }
 
+  // Group the digits of what's being typed ("2000000" → "2,000,000"; INR → "20,00,000"), keeping a
+  // half-typed decimal part as it is. The caret stays at the end, which is where typing happens.
+  function groupTyped(input, cur) {
+    const raw = input.value.replace(/,/g, '');
+    const m = /^(\d+)(\.\d*)?$/.exec(raw);
+    if (!m) return;
+    const grouped = window.Rates.plainMoney(+m[1], cur) + (m[2] || '');
+    if (grouped !== input.value) input.value = grouped;
+  }
+
   let rateNote = null;
   // Currency gets a highlighted block of its own, one row per side so big numbers fit.
   function moneyRow() {
@@ -134,9 +144,9 @@
       dst.value = r ? window.Rates.plainMoney(r.value, to) : '';
       updateRateNote();
     };
-    ia.addEventListener('input', () => { last = 'a'; recalc(); });
-    ib.addEventListener('input', () => { last = 'b'; recalc(); });
-    const onSel = () => { prefs.cur = [sa.value, sb.value]; savePrefs(); recalc(); };
+    ia.addEventListener('input', () => { last = 'a'; groupTyped(ia, sa.value); recalc(); });
+    ib.addEventListener('input', () => { last = 'b'; groupTyped(ib, sb.value); recalc(); });
+    const onSel = () => { prefs.cur = [sa.value, sb.value]; savePrefs(); groupTyped(last === 'a' ? ia : ib, last === 'a' ? sa.value : sb.value); recalc(); };
     sa.addEventListener('change', onSel);
     sb.addEventListener('change', onSel);
     add.addEventListener('click', () => {
