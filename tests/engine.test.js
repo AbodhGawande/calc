@@ -165,7 +165,7 @@ test('words right after a number are notes', () => {
 test('multi-line calculations', () => {
   let p = E.evaluatePage(['700 rent', '+500 food', '+20 tip = sum', 'sum×2=']);
   assert.deepEqual(values(p), [700, 1200, 1220, 2440]);
-  assert.deepEqual(statuses(p), [null, null, 'answer', 'answer']);
+  assert.deepEqual(statuses(p), [null, 'live', 'answer', 'answer']);  // each row keeps its running total
   assert.equal(p.lines[2].def.name, 'sum');
   assert.deepEqual(values(E.evaluatePage(['700', '+500', '×2='])), [700, 1200, 2400]); // × applies to the total
   assert.deepEqual(values(E.evaluatePage(['200', '−10%='])), [200, 180]);
@@ -201,6 +201,13 @@ test('short formatting keeps 2 decimals', () => {
   assert.equal(fmt.short(0.0004), '0.0004');
 });
 
+test('each row of a multi-line sum keeps its running total', () => {
+  const p = E.evaluatePage(['500+200', '+100', '×2', '−50']);
+  assert.deepEqual(values(p), [700, 800, 1600, 1550]);
+  assert.deepEqual(statuses(p), ['live', 'live', 'live', 'live']);
+  assert.deepEqual(statuses(E.evaluatePage(['700', '+500', '+20'])), [null, 'live', 'live']);   // a lone first number shows nothing
+});
+
 test('live answers while typing', () => {
   assert.deepEqual(statuses(E.evaluatePage(['500+200'])), ['live']);
   assert.deepEqual(statuses(E.evaluatePage(['700 rent'])), [null]);                     // nothing to add up yet
@@ -229,6 +236,8 @@ test('a word after a number names it; a word after "=" names the total', () => {
   assert.deepEqual(varList(p), [['rent', 500], ['food', 500], ['expense', 1000]]);
   assert.deepEqual(varList(E.evaluatePage(['500 for food'])), [['food', 500]]);        // small words skipped
   assert.deepEqual(varList(E.evaluatePage(['500 food items'])), [['food', 500]]);      // one name per number
+  assert.deepEqual(varList(E.evaluatePage(['3 × 45 min = gym'])), [['gym', 135]]);   // a unit isn't a name
+  assert.deepEqual(varList(E.evaluatePage(['45 min workout', '5 pm call'])), [['workout', 45], ['call', 5]]);
   p = E.evaluatePage(['500 food', '200 food', 'food=']);                                // latest wins
   assert.deepEqual(values(p), [500, 200, 200]);
   assert.deepEqual(varList(E.evaluatePage(['500 food', '9 rent', '200 food'])), [['rent', 9], ['food', 200]]);

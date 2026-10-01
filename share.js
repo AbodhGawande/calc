@@ -5,6 +5,8 @@
 
   const $ = id => document.getElementById(id);
   let deps = null;
+  // Inside the native iPhone app, sharing goes through the app (iOS share sheet); in a browser, the Web Share API.
+  const native = () => window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.tote;
 
   // "45 pizza + 18 drinks = bill (63)", "320 mi to km = 514.99 km", "45 + 18 = 63".
   function pageAsText() {
@@ -85,6 +87,7 @@
   async function shareText() {
     const body = pageAsText();
     close();
+    if (native()) { native().postMessage({ type: 'shareText', text: body }); return; }
     try {
       if (navigator.share) await navigator.share({ text: body });
       else if (navigator.clipboard) { await navigator.clipboard.writeText(body); deps.toast('Copied the page as text'); }
@@ -97,6 +100,11 @@
     close();
     try {
       const blob = await pageAsImage();
+      if (native()) {
+        const data = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(blob); });
+        native().postMessage({ type: 'shareImage', png: String(data).split(',')[1] });
+        return;
+      }
       const file = new File([blob], 'tote.png', { type: 'image/png' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file] });
       else if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {

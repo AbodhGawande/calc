@@ -63,4 +63,8 @@ full.resize((512, 512), Image.LANCZOS).save(OUT / "icon-512.png")
 full.resize((192, 192), Image.LANCZOS).save(OUT / "icon-192.png")
 full.resize((180, 180), Image.LANCZOS).save(OUT / "apple-touch-icon.png")
 draw(scale=0.8).resize((512, 512), Image.LANCZOS).save(OUT / "icon-maskable-512.png")
+# the native iPhone app (ios/): one 1024 px icon, no transparency
+IOS = Path(__file__).resolve().parent.parent / "ios/Tote/Assets.xcassets/AppIcon.appiconset"
+if IOS.is_dir():
+    full.convert("RGB").save(IOS / "icon-1024.png")
 print("icons written to", OUT)

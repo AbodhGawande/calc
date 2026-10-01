@@ -7,7 +7,11 @@ A calculator page in the style of Apple's Math Notes, with a calculator keypad, 
 brackets anywhere, and USD ⇄ INR conversion. Built as a Home Screen web app (PWA): plain
 HTML/CSS/JS, no build step, no dependencies.
 
-## Install on iPhone
+## Native iPhone app
+`ios/` wraps these same files in a native app (`ios/README.md`): built and installed over Wi-Fi with free signing,
+renewed every few days by `ios/tools/renew.py`. The web version below stays as it is, for sharing.
+
+## Install on iPhone (web version)
 1. Open https://abodhgawande.github.io/calc/ in **Safari**.
 2. Share ▸ **Add to Home Screen**.
 3. Launch it from the Home Screen icon. It runs full screen and works offline.
@@ -21,8 +25,8 @@ HTML/CSS/JS, no build step, no dependencies.
   maths and names that number (`700 rent + 500 food` = 1,200, and rent = 700, food = 500); small words like "for"
   are skipped. A word after `=` names the total (`… = expense`). Typing a letter straight after a number or `=` adds
   the space for you.
-- **Several lines:** a line starting with `+ − × ÷` carries on from the line above (× and ÷ apply to the running
-  total); the total shows on the last line. A blank line or a line starting with a number or word starts afresh.
+- **Several lines:** a line starting with `+ − × ÷` (or a line ending with one) carries on from the line above (× and ÷
+  apply to the running total); each row shows the total so far. A blank line or a line starting with a number or word starts afresh.
 - **Edit anything.** Tap anywhere to place the cursor and change a number; answers update instantly.
 - **Brackets** `(` `)` go anywhere. A missing `)` is added for you, and `2(3+4)` multiplies.
 - **Calculator habits:** a number typed after an answer starts a new line; an operator after an answer starts a new

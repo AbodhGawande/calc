@@ -31,7 +31,7 @@
   const DATE_LIKE = /\d[-/]\d/;
   // Small words that never become names: in "500 for food" the name is food.
   const SMALL_WORDS = new Set(['a', 'an', 'the', 'for', 'on', 'in', 'at', 'of', 'to', 'per', 'each', 'and', 'or',
-    'from', 'with', 'by', 'as', 'is', 'x', 'my', 'our', 'into']);
+    'from', 'with', 'by', 'as', 'is', 'x', 'my', 'our', 'into', 'am', 'pm']);
 
   // Plain-digit string for a computed value, e.g. 0.30000000000000004 -> "0.3".
   function rawString(v) {
@@ -100,7 +100,8 @@
       for (let j = i + 1; j < tokens.length && (tokens[j].word || tokens[j].isVar); j++) {
         const w = tokens[j];
         if (w.isVar && !w.sp) break; // "2rent" glued on is a multiplication, not a name
-        if (SMALL_WORDS.has(w.text.toLowerCase())) continue;
+        // Small words and units are skipped: "500 for food" and "45 min workout" name food and workout.
+        if (SMALL_WORDS.has(w.text.toLowerCase()) || U.lookupUnit(w.text)) continue;
         out.push({ name: w.text, value: t.v, pos: w.pos, end: w.end });
         break;
       }
@@ -385,7 +386,8 @@
         else if (a.simple) o.status = null; // "200 var" — the number is already there
         else o.status = 'answer';
       } else {
-        o.status = o.last && o.blockOp && a && !a.simple && has ? 'live' : null;
+        // Every row of a multi-line sum keeps its running total (not just the last row).
+        o.status = o.blockOp && a && !a.simple && has ? 'live' : null;
       }
     });
     return { lines: out, vars };

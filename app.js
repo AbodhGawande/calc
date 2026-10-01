@@ -14,7 +14,7 @@
   const MIN = 60000;
   const OPS = '+−×÷-*/';
   const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
-  const APP_VERSION = 23; // shown at the bottom of the help page; bump together with VERSION in sw.js
+  const APP_VERSION = 24; // shown at the bottom of the help page; bump together with VERSION in sw.js
   const FS_MIN = 22, FS_MAX = 36; // page text size: starts at FS_MAX, never smaller than FS_MIN
 
   // ---------- storage ----------
@@ -330,6 +330,8 @@
 
   function copyValue(v) {
     const done = () => toast('Copied ' + fmt.short(v));
+    const native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.tote;
+    if (native) { native.postMessage({ type: 'copy', text: E.rawString(v) }); done(); return; } // the iPhone app
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(E.rawString(v)).then(done, () => toast('Couldn’t copy'));
     else toast('Couldn’t copy');
   }
@@ -907,5 +909,9 @@
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
 
-  window.__calc = { get text() { return text; }, get sel() { return sel; } }; // for debugging from the console
+  window.__calc = {
+    get text() { return text; }, get sel() { return sel; },
+    // The iPhone app calls this once its view is ready, so the cursor shows at launch (see ios/).
+    refocus() { if (textMode) return; syncSel(); els.note.blur(); ensureFocus(); },
+  }; // for debugging from the console
 })();
