@@ -26,3 +26,11 @@ it builds the last commit **pushed** to GitHub and reinstalls over Wi-Fi when si
 unless < 1 day). `renew.py status` · `renew.py renew --now` · `renew.py add <UDID> [name] [--push-updates]`.
 Abodh's phone has `--push-updates` (gets every pushed version). Always `git push` after committing.
 Log: `~/Library/Logs/Tote/renew.log`.
+
+## History (iPhone app only)
+Clear puts the page away; ‹ › in the top bar step through put-away pages (newest first), like Antinote. Old pages can be
+edited (they move up at the next Clear) or deleted (Delete in the bar, with Undo); a page goes a year after its last
+edit. Stored by `Tote/History.swift`: the app's own copy (Application Support/Tote/History/<id>.json) plus, once a
+folder is chosen, `<id>.txt` (the page with answers) in iCloud Drive › Abodh Apps Data Sync › Tote › iPhone. Text files
+there that the app doesn't know come back into history (e.g. after a reinstall). Amruta picks the same path in her own
+iCloud Drive. The web version has no history.

@@ -9,9 +9,10 @@
   const native = () => window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.tote;
 
   // "45 pizza + 18 drinks = bill (63)", "320 mi to km = 514.99 km", "45 + 18 = 63".
-  function pageAsText() {
-    const page = deps.page();
-    return deps.text().split('\n').map((line, i) => {
+  // Any page's text (history pages too) when given one; otherwise the page on screen.
+  function pageAsText(text, page) {
+    if (text == null) { text = deps.text(); page = deps.page(); }
+    return text.split('\n').map((line, i) => {
       const info = page.lines[i];
       const ans = info && (info.status === 'answer' || info.status === 'live') ? deps.resultText(info) : null;
       if (!ans) return line;
@@ -85,7 +86,7 @@
   }
 
   async function shareText() {
-    const body = pageAsText();
+    const body = pageAsText(null);
     close();
     if (native()) { native().postMessage({ type: 'shareText', text: body }); return; }
     try {

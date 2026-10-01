@@ -67,6 +67,7 @@ final class BundleFiles: NSObject, WKURLSchemeHandler {
 final class Bridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
     weak var webView: WKWebView?
     private let backup = Backup()
+    private let history = History()
 
     override init() {
         super.init()
@@ -77,13 +78,20 @@ final class Bridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUI
         }
         NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil,
                                                queue: .main) { [weak self] _ in self?.refocus() }
+        // A folder was just chosen: tell the page, with any pages that were only in that folder.
+        history.onChosen = { [weak self] pages in
+            let json = (try? String(data: JSONEncoder().encode(pages), encoding: .utf8)) ?? "[]"
+            self?.webView?.evaluateJavaScript("window.__toteHistoryFolder && window.__toteHistoryFolder(\(json))")
+        }
     }
 
     /// Runs before the page's own scripts: puts back any saved key WebKit has lost, then mirrors every
     /// "calc.*" write to the app, which keeps its own copy in Application Support (see Backup).
     func restoreScript() -> String {
         let saved = (try? String(data: JSONEncoder().encode(backup.values), encoding: .utf8)) ?? "{}"
+        let pages = (try? String(data: JSONEncoder().encode(history.load()), encoding: .utf8)) ?? "[]"
         return """
+        window.__toteNative = { history: \(pages), folder: \(history.hasFolder) };
         (function () {
           var saved = \(saved);
           try { for (var k in saved) if (localStorage.getItem(k) === null) localStorage.setItem(k, saved[k]); } catch (e) {}
@@ -104,6 +112,15 @@ final class Bridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUI
             if let key = msg["key"] as? String, let value = msg["value"] as? String { backup.set(key, value) }
         case "copy":
             UIPasteboard.general.string = msg["text"] as? String
+        case "histSave":
+            if let page = msg["page"] as? [String: Any], let data = try? JSONSerialization.data(withJSONObject: page),
+               let p = try? JSONDecoder().decode(History.Page.self, from: data) { history.save(p) }
+        case "histDelete":
+            if let id = msg["id"] as? String { history.delete(id) }
+        case "histAskFolder":
+            if let top = topController() { history.askForFolder(from: top) }
+        case "histChooseFolder":
+            if let top = topController() { history.chooseFolder(from: top) }
         case "shareText":
             if let text = msg["text"] as? String { share([text]) }
         case "shareImage":
@@ -115,9 +132,14 @@ final class Bridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUI
         }
     }
 
-    private func share(_ items: [Any]) {
-        guard let web = webView, var top = web.window?.rootViewController else { return }
+    private func topController() -> UIViewController? {
+        guard var top = webView?.window?.rootViewController else { return nil }
         while let next = top.presentedViewController { top = next }
+        return top
+    }
+
+    private func share(_ items: [Any]) {
+        guard let web = webView, let top = topController() else { return }
         let sheet = UIActivityViewController(activityItems: items, applicationActivities: nil)
         sheet.popoverPresentationController?.sourceView = web
         top.present(sheet, animated: true)

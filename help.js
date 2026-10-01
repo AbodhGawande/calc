@@ -28,6 +28,8 @@
       lines: [['4|5 + 18 + 12=', '75']] },
     { cap: 'Clear wipes the page (Undo brings it back). Share sends the page as text or a picture.',
       bar: true },
+    { cap: 'In the iPhone app, Clear keeps the page: ‹ › step back through old pages. Edit or delete them there. Pages go after a year.',
+      lines: [['[[Tue Oct 1, 6:32 PM · 3 of 12]]', ''], ['45 + 18 + 12=', '75']], native: true },
     { cap: 'Each new day gets a date line, so an old page stays readable.',
       lines: [['45 + 18 + 12=', '75'], ['', ''], ['— Fri, Sep 11, 2026', ''], ['320 mi to km', '~514.99 km']] },
   ];
@@ -90,7 +92,8 @@
     chip.append(el('span', 'help-app', 'Tote'), el('span', 'help-ver', 'v' + version), el('span', 'help-dot', '·'), el('span', 'help-maker', 'Abodh SG'));
     about.appendChild(chip);
     body.appendChild(about);
-    for (const c of CARDS) body.appendChild(card(c));
+    const native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.tote;
+    for (const c of CARDS) if (!c.native || native) body.appendChild(card(c));
   }
   function open() {
     if (!built) { build(); built = true; }

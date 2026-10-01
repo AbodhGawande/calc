@@ -9,7 +9,8 @@ HTML/CSS/JS, no build step, no dependencies.
 
 ## Native iPhone app
 `ios/` wraps these same files in a native app (`ios/README.md`): built and installed over Wi-Fi with free signing,
-renewed every few days by `ios/tools/renew.py`. The web version below stays as it is, for sharing.
+renewed every few days by `ios/tools/renew.py`. The app also keeps a history of cleared pages (‹ ›), saved to
+iCloud Drive. The web version below stays as it is (no history), for sharing.
 
 ## Install on iPhone (web version)
 1. Open https://abodhgawande.github.io/calc/ in **Safari**.

@@ -14,7 +14,7 @@
   const MIN = 60000;
   const OPS = '+−×÷-*/';
   const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
-  const APP_VERSION = 24; // shown at the bottom of the help page; bump together with VERSION in sw.js
+  const APP_VERSION = 25; // shown at the bottom of the help page; bump together with VERSION in sw.js
   const FS_MIN = 22, FS_MAX = 36; // page text size: starts at FS_MAX, never smaller than FS_MIN
 
   // ---------- storage ----------
@@ -54,6 +54,7 @@
     keypad: $('keypad'), fxBar: $('fxBar'), vars: $('vars'), varChips: $('varChips'), menu: $('menu'), menuFull: $('menuFull'),
     nameBox: $('nameBox'), nbValue: $('nbValue'), nbInput: $('nbInput'), nbError: $('nbError'), nbRemove: $('nbRemove'),
     undo: $('undoBtn'), toast: $('toast'),
+    older: $('olderBtn'), newer: $('newerBtn'), histBar: $('histBar'), histWhen: $('histWhen'), histFolder: $('histFolder'),
   };
 
   // ---------- state ----------
@@ -81,7 +82,12 @@
   let page = { lines: [], vars: new Map() }; // the latest E.evaluatePage result
 
   let saveTimer;
-  function saveNow() { clearTimeout(saveTimer); save(K.note, { text, sel, updatedAt }); }
+  // The live page is what's kept in calc.note; a history page on screen saves into history instead (see history).
+  function saveNow() {
+    clearTimeout(saveTimer);
+    if (viewing) { saveViewed(); save(K.note, { text: live.text, sel: live.sel, updatedAt }); }
+    else save(K.note, { text, sel, updatedAt });
+  }
   function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 250); }
 
   // ---------- editor DOM ----------
@@ -505,7 +511,7 @@
   // The first edit of a new day, at the end of the page, gets a date line first ("— Fri, Sep 11, 2026"),
   // so an old page stays readable. Edits in the middle of the page don't.
   function dayDivider() {
-    if (!text.trim() || sel[0] !== sel[1] || sel[1] < text.replace(/\s+$/, '').length) return;
+    if (viewing || !text.trim() || sel[0] !== sel[1] || sel[1] < text.replace(/\s+$/, '').length) return;
     const today = new Date();
     if (updatedAt && new Date(updatedAt).toDateString() === today.toDateString()) return;
     const div = E.dividerFor(today);
@@ -654,6 +660,7 @@
     const s = undoStack.pop();
     if (!s) return;
     closeMenu();
+    if (s.restore) { lastKind = ''; s.restore(); els.undo.classList.toggle('off', !undoStack.length); return; }
     text = s.text;
     sel = s.sel;
     lastKind = '';
@@ -829,17 +836,198 @@
     window.visualViewport.addEventListener('scroll', sizeApp);
   }
 
-  // ---------- clear ----------
-  // One tap clears the page, no confirmation: the toast undoes it, and so does ↶ until the app is closed.
-  $('clearBtn').addEventListener('click', () => {
-    if (!text) return;
+  // ---------- history (iPhone app only) ----------
+  // Clear puts the page away instead of losing it; ‹ › step through put-away pages (newest first), like Antinote.
+  // An old page can be edited (it moves to the top at the next Clear) or deleted; pages go after a year.
+  // Storage is the app's (ios/Tote/History.swift): its own copy plus a text file per page in iCloud Drive.
+  const NATIVE = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.tote;
+  const YEAR = 365 * 24 * 60 * MIN;
+  let hist = [];           // put-away pages, newest first: { id, created, edited, text }
+  let viewing = null;      // id of the history page on screen, or null for the live page
+  let live = null;         // the live page while a history page is on screen: { text, sel }
+  let folderChosen = false;
+
+  const pageCtx = () => ({ rates: window.Rates.rates(), now: new Date() });
+  const sharedText = t => window.Share.pageAsText(t, E.evaluatePage(t.split('\n'), pageCtx()));
+  function storePage(p) {
+    NATIVE.postMessage({ type: 'histSave', page: { id: p.id, created: p.created, edited: p.edited, text: p.text, shared: sharedText(p.text) } });
+  }
+  function dropPage(p) { NATIVE.postMessage({ type: 'histDelete', id: p.id }); }
+
+  // "2026-10-01 18.32.05" — also the file name in iCloud Drive.
+  function pageId(ms) {
+    const d = new Date(ms), z = n => String(n).padStart(2, '0');
+    const base = `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}.${z(d.getMinutes())}.${z(d.getSeconds())}`;
+    let id = base, n = 2;
+    while (hist.some(p => p.id === id)) id = `${base} (${n++})`;
+    return id;
+  }
+
+  function addPage(t) {
+    if (!t.trim()) return null;
+    const now = Date.now();
+    const p = { id: pageId(now), created: now, edited: now, text: t };
+    hist.unshift(p);
+    storePage(p);
+    // First put-away page without an iCloud folder: offer to choose one (at most once a day).
+    if (!folderChosen && now - (settings.histAskedAt || 0) > 24 * 60 * MIN) {
+      settings.histAskedAt = now;
+      save(K.settings, settings);
+      setTimeout(() => NATIVE.postMessage({ type: 'histAskFolder' }), 900);
+    }
+    return p;
+  }
+
+  function saveViewed() {
+    const p = hist.find(x => x.id === viewing);
+    if (!p || p.text === text) return;
+    p.text = text;
+    p.edited = Date.now();
+    storePage(p);
+  }
+
+  // Before showing another page: a history page's edits are saved (its place in the list stays put until the next
+  // Clear, so ‹ › never jump around); the live page is kept aside.
+  function leavePage() {
+    syncSel();
+    if (viewing) {
+      saveViewed();
+    } else {
+      live = { text, sel: sel.slice() };
+      save(K.note, { text, sel, updatedAt });
+    }
+  }
+
+  function openPage(id) {
     closeMenu();
-    pushUndo({ text, sel: sel.slice() }, 'clear');
-    text = '';
-    sel = [0, 0];
-    changed();
-    toast('Page cleared', { label: 'Undo', run: undo });
+    viewing = id;
+    if (id) {
+      text = hist.find(x => x.id === id).text;
+      sel = [text.length, text.length];
+    } else {
+      text = live ? live.text : '';
+      sel = live ? live.sel : [0, 0];
+      live = null;
+    }
+    undoStack.length = 0; // undo stays within a page
+    lastKind = '';
+    els.undo.classList.add('off');
+    render();
+    applySel();
+    els.scroller.scrollTop = 0;
+    revealCaret();
+    renderHistBar();
+    ensureFocus();
+  }
+
+  function goOlder() {
+    if (!NATIVE) return;
+    const i = viewing ? hist.findIndex(x => x.id === viewing) : -1;
+    const target = hist[i + 1];
+    if (!target) return;
+    leavePage();
+    openPage(target.id);
+  }
+  function goNewer() {
+    if (!viewing) return;
+    const i = hist.findIndex(x => x.id === viewing);
+    const target = i > 0 ? hist[i - 1].id : null;
+    leavePage();
+    openPage(target);
+  }
+
+  const histDate = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  function renderHistBar() {
+    if (!NATIVE) return;
+    const i = viewing ? hist.findIndex(x => x.id === viewing) : -1;
+    els.older.classList.toggle('off', !hist[i + 1]);
+    els.newer.classList.toggle('off', !viewing);
+    els.histBar.hidden = !viewing;
+    if (!viewing) return;
+    els.histWhen.textContent = `${histDate.format(hist[i].edited)} · ${i + 1} of ${hist.length}`;
+    els.histFolder.hidden = folderChosen;
+  }
+
+  // Clear always gives a blank new page. The live page goes into history; a history page on screen stays as it is.
+  $('clearBtn').addEventListener('click', () => {
+    closeMenu();
+    syncSel();
+    if (!NATIVE) {                                   // web version: no history
+      if (!text) return;
+      pushUndo({ text, sel: sel.slice() }, 'clear');
+      text = '';
+      sel = [0, 0];
+      changed();
+      toast('Page cleared', { label: 'Undo', run: undo });
+      return;
+    }
+    const wasViewing = viewing;
+    if (!wasViewing && !text.trim()) return;         // already a blank page
+    leavePage();
+    const prev = live, prevUpdated = updatedAt;
+    hist.sort((a, b) => b.edited - a.edited);        // edited old pages move up to where they belong now
+    const added = addPage(prev.text);
+    live = { text: '', sel: [0, 0] };
+    updatedAt = Date.now();
+    openPage(null);
+    saveNow();
+    pushUndo({ restore() {
+      if (added) { hist.splice(hist.indexOf(added), 1); dropPage(added); }
+      updatedAt = prevUpdated;
+      live = prev;
+      openPage(wasViewing);                          // back to the page you were on
+      saveNow();
+    } }, 'clear');
+    toast(added ? 'Page saved to history' : 'New page', { label: 'Undo', run: undo });
   });
+
+  function deletePage() {
+    if (!viewing) return;
+    const i = hist.findIndex(x => x.id === viewing), p = hist[i];
+    hist.splice(i, 1);
+    dropPage(p);
+    const next = hist[i] || hist[i - 1] || null;     // the next older page, else the newer one, else the live page
+    viewing = null;
+    openPage(next ? next.id : null);
+    pushUndo({ restore() {
+      hist.splice(i, 0, p);
+      storePage(p);
+      leavePage();
+      openPage(p.id);
+    } }, 'delete');
+    toast('Page deleted', { label: 'Undo', run: undo });
+  }
+
+  if (NATIVE) {
+    document.body.classList.add('native');
+    const n = window.__toteNative || {};
+    folderChosen = !!n.folder;
+    const now = Date.now();
+    for (const p of n.history || []) {
+      if (now - p.edited > YEAR) { dropPage(p); continue; }  // a year after its last edit, a page goes
+      const page = { id: p.id, created: p.created, edited: p.edited, text: p.imported ? E.stripAnswers(p.text) : p.text };
+      hist.push(page);
+      if (p.imported) setTimeout(() => storePage(page)); // a page back from iCloud Drive: keep the app's own copy too
+    }
+    hist.sort((a, b) => b.edited - a.edited);
+    els.older.addEventListener('click', goOlder);
+    els.newer.addEventListener('click', goNewer);
+    $('histDelete').addEventListener('click', deletePage);
+    els.histFolder.addEventListener('click', () => NATIVE.postMessage({ type: 'histChooseFolder' }));
+    // The app says a folder was chosen (pages that were only in that folder come along).
+    window.__toteHistoryFolder = pages => {
+      folderChosen = true;
+      for (const p of pages || []) {
+        if (hist.some(x => x.id === p.id) || Date.now() - p.edited > YEAR) continue;
+        const page = { id: p.id, created: p.created, edited: p.edited, text: E.stripAnswers(p.text) };
+        hist.push(page);
+        storePage(page);
+      }
+      hist.sort((a, b) => b.edited - a.edited);
+      renderHistBar();
+      toast('History is kept in iCloud Drive too');
+    };
+  }
 
   // ---------- help ----------
   window.HelpSheet.init({ version: APP_VERSION, onOpen: closeMenu });
@@ -892,6 +1080,7 @@
 
   sizeApp();
   render();
+  renderHistBar();
   ensureFocus(); // the cursor shows where typing will land, before the first key
   window.Rates.refresh(); // keep the saved rate fresh even when no line converts, so conversion works offline later
   if (notice) { saveNow(); toast(notice); }
