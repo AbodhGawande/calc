@@ -24,7 +24,7 @@ Needs the simulator build first (it photographs that app):
 and Pillow. The measurements below are for the iPhone 18 Pro simulator (1206 × 2622)."""
 import json, subprocess, sys, time
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "intro"
@@ -266,8 +266,52 @@ def build():
         data["pages"].append({"shots": shots, "notes": notes, "rings": rings, **({"when": WHEN[page]} if page in WHEN else {}), **({"whole": True} if page in WHOLE else {})})
     (OUT / "data.js").write_text("/* Made by tools/make_intro.py: the guide's pictures and where their notes go (fractions of the picture). */\n"
                                  "window.INTRO_SHOTS = " + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + ";\n")
+    share_card()
     size = sum(p.stat().st_size for p in OUT.glob("*.webp")) // 1024
     print(f"built intro/: {len(list(OUT.glob('*.webp')))} pictures, {size} KB")
+
+
+def share_card():
+    """icons/share.jpg — the picture Notes, Messages, Telegram… show when the web version's link is pasted
+    (index.html names it in its og:image line): the name, one line about it, and a phone with the real app."""
+    S, W2, H2 = 2, 1200, 630                                        # drawn at twice the size, then scaled down
+    card = Image.new("RGB", (W2 * S, H2 * S))
+    d = ImageDraw.Draw(card)
+    stops = [(0.0, (74, 44, 7)), (0.45, (30, 18, 3)), (1.0, (0, 0, 0))]   # the guide's warm light from above
+    for y in range(H2 * S):
+        t = y / (H2 * S - 1)
+        (t0, c0), (t1, c1) = next((a, b) for a, b in zip(stops, stops[1:]) if a[0] <= t <= b[0])
+        k = (t - t0) / (t1 - t0)
+        d.line([(0, y), (W2 * S, y)], fill=tuple(round(c0[i] + (c1[i] - c0[i]) * k) for i in range(3)))
+
+    def font(size, weight):
+        f = ImageFont.truetype("/System/Library/Fonts/SFNS.ttf", size * S)
+        f.set_variation_by_name(weight)
+        return f
+
+    # the words, on the left
+    x = 84 * S
+    icon = Image.open(ROOT / "icons/icon-512.png").convert("RGBA").resize((116 * S, 116 * S), Image.LANCZOS)
+    mask = Image.new("L", icon.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, icon.width - 1, icon.height - 1], radius=26 * S, fill=255)
+    card.paste(icon, (x, 118 * S), mask)
+    d.text((x - 4 * S, 262 * S), "Napkin", font=font(108, "Heavy"), fill=(255, 255, 255))
+    d.text((x, 400 * S), "A calculator you can write on", font=font(40, "Semibold"), fill=(235, 235, 240))
+    d.text((x, 462 * S), "Answers as you type · names · conversions", font=font(27, "Regular"), fill=(152, 152, 158))
+
+    # the phone, on the right, running off the bottom
+    pw, px, py, edge = 336 * S, 792 * S, 64 * S, 9 * S
+    ph = round((pw - 2 * edge) * CUT / W) + 2 * edge
+    d.rounded_rectangle([px - 3 * S, py - 3 * S, px + pw + 3 * S, py + ph + 3 * S], radius=58 * S, fill=(86, 86, 91))
+    d.rounded_rectangle([px, py, px + pw, py + ph], radius=55 * S, fill=(26, 26, 28))
+    shot = Image.open(SHOTS / "4c.png").convert("RGB").resize((pw - 2 * edge, ph - 2 * edge), Image.LANCZOS)
+    mask = Image.new("L", shot.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, shot.width - 1, shot.height - 1], radius=47 * S, fill=255)
+    card.paste(shot, (px + edge, py + edge), mask)
+    d.rounded_rectangle([px + pw // 2 - 48 * S, py + 19 * S, px + pw // 2 + 48 * S, py + 47 * S], radius=14 * S, fill=(10, 10, 11))
+
+    card.resize((W2, H2), Image.LANCZOS).save(ROOT / "icons/share.jpg", "JPEG", quality=88, optimize=True)
+    print(f"icons/share.jpg: {(ROOT / 'icons/share.jpg').stat().st_size // 1024} KB")
 
 
 if __name__ == "__main__":

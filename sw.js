@@ -1,7 +1,7 @@
 /* Offline support: the whole app is kept on the phone and opened from there — the internet is only used to look for
    a new version (and for exchange rates). Bump VERSION on every deploy — that is what makes phones pick up the new
    files. */
-const VERSION = 'calc-v30'; // keep the number in step with APP_VERSION in app.js
+const VERSION = 'calc-v31'; // keep the number in step with APP_VERSION in app.js
 // The app itself: fetched when a version is installed.
 const ASSETS = [
   './',

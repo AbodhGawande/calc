@@ -86,6 +86,12 @@ which iOS can wipe, so share it to Notes now and then.
 - `tests/`: run `node --test tests/engine.test.js tests/units.test.js`
 - `tools/make_icons.py`: regenerates the icons (needs Pillow) · `tools/make_intro.py`: the guide's screenshots
 
+## The link's preview
+Pasting https://abodhgawande.github.io/calc/ into Notes, Messages, Telegram and the like shows a card with a picture:
+the `og:` lines in `index.html` name the title, a line of description and `icons/share.jpg` (1200 × 630, drawn by
+`tools/make_intro.py` from one of the guide's screenshots). Apps keep their own copy of a link's preview for a while;
+Telegram's can be refreshed by sending the link to @WebpageBot.
+
 ## Opening fast, and offline
 `sw.js` keeps the whole app on the phone and serves it from there; the internet is only used to look for a new version
 (and for exchange rates). A new version's own files are stored first; the guide's pictures are stored afterwards, when
