@@ -3,20 +3,18 @@ import UIKit
 import WebKit
 import ObjectiveC
 
-/// The page, served from the app bundle (Web/, copied in at build time from the repo's web files) at tote://app/.
-struct ToteWebView: UIViewRepresentable {
+/// The page, served from the app bundle (Web/, copied in at build time from the repo's web files) at napkin://app/.
+struct NapkinWebView: UIViewRepresentable {
     func makeCoordinator() -> Bridge { Bridge() }
 
     func makeUIView(context: Context) -> WKWebView {
         FocusWithoutTap.enable()
         let bridge = context.coordinator
         let config = WKWebViewConfiguration()
-        config.setURLSchemeHandler(BundleFiles(), forURLScheme: "tote")
+        config.setURLSchemeHandler(BundleFiles(), forURLScheme: "napkin")
         config.websiteDataStore = .default()
-        config.userContentController.add(bridge, name: "tote")
-        config.userContentController.addUserScript(WKUserScript(source: bridge.restoreScript(),
-                                                                injectionTime: .atDocumentStart,
-                                                                forMainFrameOnly: true))
+        config.userContentController.add(bridge, name: "napkin")
+        config.userContentController.addUserScript(bridge.startScript())
         let web = WKWebView(frame: .zero, configuration: config)
         web.isOpaque = false
         web.backgroundColor = .black
@@ -28,7 +26,7 @@ struct ToteWebView: UIViewRepresentable {
         web.uiDelegate = bridge
         if #available(iOS 16.4, *) { web.isInspectable = true } // Safari ▸ Develop on the Mac, for debugging
         bridge.webView = web
-        web.load(URLRequest(url: URL(string: "tote://app/index.html")!))
+        web.load(URLRequest(url: URL(string: "napkin://app/index.html")!))
         return web
     }
 
@@ -77,25 +75,35 @@ final class Bridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUI
             }
         }
         NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil,
-                                               queue: .main) { [weak self] _ in self?.refocus() }
-        // A folder was just chosen: tell the page, with any pages that were only in that folder.
-        history.onChosen = { [weak self] pages in
+                                               queue: .main) { [weak self] _ in
+            self?.refocus()
+            self?.history.refresh()
+        }
+        // Pages that iCloud has and the app didn't (or that are newer there): hand them to the page.
+        history.onPages = { [weak self] pages in
             let json = (try? String(data: JSONEncoder().encode(pages), encoding: .utf8)) ?? "[]"
-            self?.webView?.evaluateJavaScript("window.__toteHistoryFolder && window.__toteHistoryFolder(\(json))")
+            self?.webView?.evaluateJavaScript("window.__napkinHistory && window.__napkinHistory(\(json))")
+        }
+        history.onICloud = { [weak self] on in
+            self?.webView?.evaluateJavaScript("window.__napkinICloud && window.__napkinICloud(\(on))")
         }
     }
 
     /// Runs before the page's own scripts: puts back any saved key WebKit has lost, then mirrors every
     /// "calc.*" write to the app, which keeps its own copy in Application Support (see Backup).
-    func restoreScript() -> String {
+    func startScript() -> WKUserScript {
+        WKUserScript(source: restoreScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true)
+    }
+
+    private func restoreScript() -> String {
         let saved = (try? String(data: JSONEncoder().encode(backup.values), encoding: .utf8)) ?? "{}"
         let pages = (try? String(data: JSONEncoder().encode(history.load()), encoding: .utf8)) ?? "[]"
         return """
-        window.__toteNative = { history: \(pages), folder: \(history.hasFolder) };
+        window.__napkinNative = { history: \(pages), icloud: \(history.iCloudOn) };
         (function () {
           var saved = \(saved);
           try { for (var k in saved) if (localStorage.getItem(k) === null) localStorage.setItem(k, saved[k]); } catch (e) {}
-          var set = Storage.prototype.setItem, app = window.webkit.messageHandlers.tote;
+          var set = Storage.prototype.setItem, app = window.webkit.messageHandlers.napkin;
           Storage.prototype.setItem = function (k, v) {
             set.call(this, k, v);
             if (this === window.localStorage && String(k).indexOf('calc.') === 0)
@@ -117,10 +125,8 @@ final class Bridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUI
                let p = try? JSONDecoder().decode(History.Page.self, from: data) { history.save(p) }
         case "histDelete":
             if let id = msg["id"] as? String { history.delete(id) }
-        case "histAskFolder":
-            if let top = topController() { history.askForFolder(from: top) }
-        case "histChooseFolder":
-            if let top = topController() { history.chooseFolder(from: top) }
+        case "histReady":                 // the page is up: anything iCloud has that the app doesn't can come in now
+            history.refresh()
         case "shareText":
             if let text = msg["text"] as? String { share([text]) }
         case "shareImage":
@@ -145,8 +151,15 @@ final class Bridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUI
         top.present(sheet, animated: true)
     }
 
-    // If iOS ever stops the page's process to free memory, bring the page back (its data is saved).
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { webView.reload() }
+    // If iOS ever stops the page's process to free memory, bring the page back (its data is saved) — with the
+    // saved data and history as they are now, not as they were at launch.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        backup.flush()
+        let scripts = webView.configuration.userContentController
+        scripts.removeAllUserScripts()
+        scripts.addUserScript(startScript())
+        webView.reload()
+    }
 
     // Show the cursor at launch: the page focused itself before the view could take focus, so focus it again.
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { refocus() }
@@ -160,7 +173,7 @@ final class Bridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUI
     // The page has no links of its own; anything else opens in Safari.
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        if let url = action.request.url, url.scheme == "tote" || url.scheme == "about" {
+        if let url = action.request.url, url.scheme == "napkin" || url.scheme == "about" {
             decisionHandler(.allow)
         } else {
             if let url = action.request.url { UIApplication.shared.open(url) }
@@ -189,12 +202,12 @@ final class Bridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUI
     }
 }
 
-/// The app's own copy of the page's saved data, in Application Support/Tote/storage.json — written half a second
+/// The app's own copy of the page's saved data, in Application Support/Napkin/storage.json — written half a second
 /// after the last change and whenever the app goes to the background.
 final class Backup {
     private static let url: URL = {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Tote", isDirectory: true)
+            .appendingPathComponent("Napkin", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("storage.json")
     }()
@@ -221,7 +234,7 @@ final class Backup {
     }
 }
 
-/// In an app, iOS only starts editing (shows the cursor) when the page focuses a field during a tap. Tote focuses
+/// In an app, iOS only starts editing (shows the cursor) when the page focuses a field during a tap. Napkin focuses
 /// its page at launch so the cursor shows before the first key, so this tells WebKit every focus is "the user's".
 /// The keypad page has no keyboard (inputmode none), so nothing pops up. Same workaround Ionic/Cordova apps use;
 /// if a future iOS renames the method, it simply does nothing.
@@ -235,7 +248,7 @@ enum FocusWithoutTap {
         guard let method = class_getInstanceMethod(cls, sel) else {
             var count: UInt32 = 0
             let names = (class_copyMethodList(cls, &count).map { list in (0..<Int(count)).map { NSStringFromSelector(method_getName(list[$0])) } } ?? [])
-            NSLog("Tote: focus method not found; candidates: %@", names.filter { $0.contains("ocus") }.joined(separator: " | "))
+            NSLog("Napkin: focus method not found; candidates: %@", names.filter { $0.contains("ocus") }.joined(separator: " | "))
             return
         }
         typealias Original = @convention(c) (AnyObject, Selector, UnsafeRawPointer, Bool, Bool, UInt64, AnyObject?) -> Void

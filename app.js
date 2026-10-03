@@ -1,4 +1,4 @@
-/* Tote — the note page: editor, keypad, answers, names. Maths: engine.js + units.js. Rates: rates.js.
+/* Napkin — the note page: editor, keypad, answers, names. Maths: engine.js + units.js. Rates: rates.js.
    Share: share.js. The ⇄ sheet: convert.js. Help: help.js.
 
    The page is plain text (lines joined by "\n"). The editor shows one <div class="ln"> per line, split into
@@ -14,7 +14,7 @@
   const MIN = 60000;
   const OPS = '+−×÷-*/';
   const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
-  const APP_VERSION = 25; // shown at the bottom of the help page; bump together with VERSION in sw.js
+  const APP_VERSION = 26; // shown at the bottom of the help page; bump together with VERSION in sw.js
   const FS_MIN = 22, FS_MAX = 36; // page text size: starts at FS_MAX, never smaller than FS_MIN
 
   // ---------- storage ----------
@@ -54,7 +54,7 @@
     keypad: $('keypad'), fxBar: $('fxBar'), vars: $('vars'), varChips: $('varChips'), menu: $('menu'), menuFull: $('menuFull'),
     nameBox: $('nameBox'), nbValue: $('nbValue'), nbInput: $('nbInput'), nbError: $('nbError'), nbRemove: $('nbRemove'),
     undo: $('undoBtn'), toast: $('toast'),
-    older: $('olderBtn'), newer: $('newerBtn'), histBar: $('histBar'), histWhen: $('histWhen'), histFolder: $('histFolder'),
+    older: $('olderBtn'), newer: $('newerBtn'), histBar: $('histBar'), histWhen: $('histWhen'), histCloud: $('histCloud'),
   };
 
   // ---------- state ----------
@@ -336,7 +336,7 @@
 
   function copyValue(v) {
     const done = () => toast('Copied ' + fmt.short(v));
-    const native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.tote;
+    const native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.napkin;
     if (native) { native.postMessage({ type: 'copy', text: E.rawString(v) }); done(); return; } // the iPhone app
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(E.rawString(v)).then(done, () => toast('Couldn’t copy'));
     else toast('Couldn’t copy');
@@ -839,13 +839,13 @@
   // ---------- history (iPhone app only) ----------
   // Clear puts the page away instead of losing it; ‹ › step through put-away pages (newest first), like Antinote.
   // An old page can be edited (it moves to the top at the next Clear) or deleted; pages go after a year.
-  // Storage is the app's (ios/Tote/History.swift): its own copy plus a text file per page in iCloud Drive.
-  const NATIVE = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.tote;
+  // Storage is the app's (ios/Napkin/History.swift): its own copy plus a text file per page in its iCloud folder.
+  const NATIVE = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.napkin;
   const YEAR = 365 * 24 * 60 * MIN;
   let hist = [];           // put-away pages, newest first: { id, created, edited, text }
   let viewing = null;      // id of the history page on screen, or null for the live page
   let live = null;         // the live page while a history page is on screen: { text, sel }
-  let folderChosen = false;
+  let icloud = true;       // false = signed out of iCloud (or iCloud Drive is off for the app): history stays on the phone
 
   const pageCtx = () => ({ rates: window.Rates.rates(), now: new Date() });
   const sharedText = t => window.Share.pageAsText(t, E.evaluatePage(t.split('\n'), pageCtx()));
@@ -869,12 +869,6 @@
     const p = { id: pageId(now), created: now, edited: now, text: t };
     hist.unshift(p);
     storePage(p);
-    // First put-away page without an iCloud folder: offer to choose one (at most once a day).
-    if (!folderChosen && now - (settings.histAskedAt || 0) > 24 * 60 * MIN) {
-      settings.histAskedAt = now;
-      save(K.settings, settings);
-      setTimeout(() => NATIVE.postMessage({ type: 'histAskFolder' }), 900);
-    }
     return p;
   }
 
@@ -945,7 +939,7 @@
     els.histBar.hidden = !viewing;
     if (!viewing) return;
     els.histWhen.textContent = `${histDate.format(hist[i].edited)} · ${i + 1} of ${hist.length}`;
-    els.histFolder.hidden = folderChosen;
+    els.histCloud.hidden = icloud;
   }
 
   // Clear always gives a blank new page. The live page goes into history; a history page on screen stays as it is.
@@ -1000,33 +994,41 @@
 
   if (NATIVE) {
     document.body.classList.add('native');
-    const n = window.__toteNative || {};
-    folderChosen = !!n.folder;
+    $('clearBtn').textContent = 'Clear/New';         // here it doesn't wipe anything: the page goes into history
+    $('clearBtn').setAttribute('aria-label', 'New page (this one is kept)');
+    const n = window.__napkinNative || {};
+    icloud = n.icloud !== false;
     const now = Date.now();
     for (const p of n.history || []) {
       if (now - p.edited > YEAR) { dropPage(p); continue; }  // a year after its last edit, a page goes
-      const page = { id: p.id, created: p.created, edited: p.edited, text: p.imported ? E.stripAnswers(p.text) : p.text };
-      hist.push(page);
-      if (p.imported) setTimeout(() => storePage(page)); // a page back from iCloud Drive: keep the app's own copy too
+      hist.push({ id: p.id, created: p.created, edited: p.edited, text: p.text });
     }
     hist.sort((a, b) => b.edited - a.edited);
     els.older.addEventListener('click', goOlder);
     els.newer.addEventListener('click', goNewer);
     $('histDelete').addEventListener('click', deletePage);
-    els.histFolder.addEventListener('click', () => NATIVE.postMessage({ type: 'histChooseFolder' }));
-    // The app says a folder was chosen (pages that were only in that folder come along).
-    window.__toteHistoryFolder = pages => {
-      folderChosen = true;
+    els.histCloud.addEventListener('click', () => alert(
+      'These pages are only on this iPhone. To keep them in iCloud too, sign in to iCloud and turn on iCloud Drive '
+      + '(Settings ▸ your name ▸ iCloud ▸ Drive), with Napkin allowed in its list of apps.'));
+    window.__napkinICloud = on => { icloud = !!on; renderHistBar(); };
+    // Pages iCloud has that the app didn't (a reinstall, a new phone), or that were changed somewhere else.
+    window.__napkinHistory = pages => {
+      let added = 0;
       for (const p of pages || []) {
-        if (hist.some(x => x.id === p.id) || Date.now() - p.edited > YEAR) continue;
-        const page = { id: p.id, created: p.created, edited: p.edited, text: E.stripAnswers(p.text) };
-        hist.push(page);
-        storePage(page);
+        if (p.id === viewing) continue;                              // on screen right now: leave it be
+        const t = E.stripAnswers(p.text), had = hist.findIndex(x => x.id === p.id);
+        if (Date.now() - p.edited > YEAR) { if (had < 0) dropPage(p); continue; }
+        if (had >= 0 && hist[had].text === t) continue;
+        const page = { id: p.id, created: p.created, edited: p.edited, text: t };
+        if (had >= 0) hist.splice(had, 1); else added++;
+        const at = hist.findIndex(x => x.edited < page.edited);      // its place by date; the rest stay where they are
+        hist.splice(at < 0 ? hist.length : at, 0, page);
+        storePage(page);                                             // the app's own copy
       }
-      hist.sort((a, b) => b.edited - a.edited);
       renderHistBar();
-      toast('History is kept in iCloud Drive too');
+      if (added) toast(added === 1 ? '1 page came in from iCloud' : `${added} pages came in from iCloud`);
     };
+    setTimeout(() => NATIVE.postMessage({ type: 'histReady' }));     // once share.js is ready to write pages out
   }
 
   // ---------- help ----------

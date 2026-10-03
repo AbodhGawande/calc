@@ -6,7 +6,7 @@
   const $ = id => document.getElementById(id);
   let deps = null;
   // Inside the native iPhone app, sharing goes through the app (iOS share sheet); in a browser, the Web Share API.
-  const native = () => window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.tote;
+  const native = () => window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.napkin;
 
   // "45 pizza + 18 drinks = bill (63)", "320 mi to km = 514.99 km", "45 + 18 = 63".
   // Any page's text (history pages too) when given one; otherwise the page on screen.
@@ -67,7 +67,7 @@
       }
     });
     g.font = font(11 * S, false); g.fillStyle = '#48484a';
-    g.fillText('Tote', pad, H - 15 * S);
+    g.fillText('Napkin', pad, H - 15 * S);
     return new Promise(resolve => c.toBlob(resolve, 'image/png'));
   }
 
@@ -106,7 +106,7 @@
         native().postMessage({ type: 'shareImage', png: String(data).split(',')[1] });
         return;
       }
-      const file = new File([blob], 'tote.png', { type: 'image/png' });
+      const file = new File([blob], 'napkin.png', { type: 'image/png' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file] });
       else if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);

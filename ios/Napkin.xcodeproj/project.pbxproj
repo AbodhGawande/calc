@@ -7,12 +7,13 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		C70000000000000000000003 /* Tote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tote.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		C70000000000000000000040 /* Tote-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Tote-Info.plist"; sourceTree = "<group>"; };
+		C70000000000000000000003 /* Napkin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Napkin.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C70000000000000000000040 /* Napkin-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Napkin-Info.plist"; sourceTree = "<group>"; };
+		C70000000000000000000041 /* Napkin.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Napkin.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		C70000000000000000000020 /* Tote */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Tote; sourceTree = "<group>"; };
+		C70000000000000000000020 /* Napkin */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Napkin; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -29,8 +30,9 @@
 		C70000000000000000000005 = {
 			isa = PBXGroup;
 			children = (
-				C70000000000000000000020 /* Tote */,
-				C70000000000000000000040 /* Tote-Info.plist */,
+				C70000000000000000000020 /* Napkin */,
+				C70000000000000000000040 /* Napkin-Info.plist */,
+				C70000000000000000000041 /* Napkin.entitlements */,
 				C70000000000000000000007 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -38,7 +40,7 @@
 		C70000000000000000000007 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				C70000000000000000000003 /* Tote.app */,
+				C70000000000000000000003 /* Napkin.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -46,9 +48,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		C70000000000000000000008 /* Tote */ = {
+		C70000000000000000000008 /* Napkin */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = C70000000000000000000009 /* Build configuration list for PBXNativeTarget "Tote" */;
+			buildConfigurationList = C70000000000000000000009 /* Build configuration list for PBXNativeTarget "Napkin" */;
 			buildPhases = (
 				C7000000000000000000000A /* Sources */,
 				C70000000000000000000004 /* Frameworks */,
@@ -60,11 +62,11 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				C70000000000000000000020 /* Tote */,
+				C70000000000000000000020 /* Napkin */,
 			);
-			name = Tote;
-			productName = Tote;
-			productReference = C70000000000000000000003 /* Tote.app */;
+			name = Napkin;
+			productName = Napkin;
+			productReference = C70000000000000000000003 /* Napkin.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -82,7 +84,7 @@
 					};
 				};
 			};
-			buildConfigurationList = C7000000000000000000000D /* Build configuration list for PBXProject "Tote" */;
+			buildConfigurationList = C7000000000000000000000D /* Build configuration list for PBXProject "Napkin" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -95,7 +97,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				C70000000000000000000008 /* Tote */,
+				C70000000000000000000008 /* Napkin */,
 			);
 		};
 /* End PBXProject section */
@@ -172,17 +174,18 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Napkin.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = RF67S757MX;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "Tote-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = Tote;
+				INFOPLIST_FILE = "Napkin-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Napkin;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.abodh.tote.dev;
+				PRODUCT_BUNDLE_IDENTIFIER = com.abodh.napkin;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -193,17 +196,18 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Napkin.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = RF67S757MX;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "Tote-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = Tote;
+				INFOPLIST_FILE = "Napkin-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Napkin;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.abodh.tote.dev;
+				PRODUCT_BUNDLE_IDENTIFIER = com.abodh.napkin;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -213,7 +217,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		C70000000000000000000009 /* Build configuration list for PBXNativeTarget "Tote" */ = {
+		C70000000000000000000009 /* Build configuration list for PBXNativeTarget "Napkin" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				C70000000000000000000010 /* Debug */,
@@ -222,7 +226,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		C7000000000000000000000D /* Build configuration list for PBXProject "Tote" */ = {
+		C7000000000000000000000D /* Build configuration list for PBXProject "Napkin" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				C7000000000000000000000E /* Debug */,

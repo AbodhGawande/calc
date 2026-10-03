@@ -1,6 +1,6 @@
 {
-  "name": "Tote",
-  "short_name": "Tote",
+  "name": "Napkin",
+  "short_name": "Napkin",
   "description": "Math-notes style calculator page with USD ⇄ INR conversion",
   "start_url": "./",
   "scope": "./",

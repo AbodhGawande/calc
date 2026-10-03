@@ -27,8 +27,10 @@
     { cap: 'Tap any number to change it. Everything below updates.',
       lines: [['4|5 + 18 + 12=', '75']] },
     { cap: 'Clear wipes the page (Undo brings it back). Share sends the page as text or a picture.',
-      bar: true },
-    { cap: 'In the iPhone app, Clear keeps the page: ‹ › step back through old pages. Edit or delete them there. Pages go after a year.',
+      bar: 'Clear', web: true },
+    { cap: 'Clear/New starts a fresh page and keeps the old one. Share sends the page as text or a picture.',
+      bar: 'Clear/New', native: true },
+    { cap: '‹ › step back through old pages. Edit or delete them there. They are kept in iCloud too, and go after a year.',
       lines: [['[[Tue Oct 1, 6:32 PM · 3 of 12]]', ''], ['45 + 18 + 12=', '75']], native: true },
     { cap: 'Each new day gets a date line, so an old page stays readable.',
       lines: [['45 + 18 + 12=', '75'], ['', ''], ['— Fri, Sep 11, 2026', ''], ['320 mi to km', '~514.99 km']] },
@@ -57,7 +59,7 @@
     const page = el('div', 'hc-page');
     if (c.bar) {
       const bar = el('div', 'hc-bar');
-      bar.append(el('span', 'hc-btn hc-btn-text', 'Clear'), el('span', 'hc-btn', '⤴'), el('span', 'hc-btn', '?'), el('span', 'hc-spacer'), el('span', 'hc-btn', '↶'));
+      bar.append(el('span', 'hc-btn hc-btn-text', c.bar), el('span', 'hc-btn', '⤴'), el('span', 'hc-btn', '?'), el('span', 'hc-spacer'), el('span', 'hc-btn', '↶'));
       page.appendChild(bar);
     }
     for (const [src, ans] of c.lines || []) {
@@ -89,11 +91,11 @@
     // App name, version and maker at the top.
     const about = el('div', 'help-about');
     const chip = el('span', 'help-chip');
-    chip.append(el('span', 'help-app', 'Tote'), el('span', 'help-ver', 'v' + version), el('span', 'help-dot', '·'), el('span', 'help-maker', 'Abodh SG'));
+    chip.append(el('span', 'help-app', 'Napkin'), el('span', 'help-ver', 'v' + version), el('span', 'help-dot', '·'), el('span', 'help-maker', 'Abodh SG'));
     about.appendChild(chip);
     body.appendChild(about);
-    const native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.tote;
-    for (const c of CARDS) if (!c.native || native) body.appendChild(card(c));
+    const native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.napkin;
+    for (const c of CARDS) if (native ? !c.web : !c.native) body.appendChild(card(c));
   }
   function open() {
     if (!built) { build(); built = true; }

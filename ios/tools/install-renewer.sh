@@ -1,12 +1,12 @@
 #!/bin/zsh
-# Installs (or updates) the Tote iPhone-app renewer: copies renew.py out of ~/Documents (so the background job
+# Installs (or updates) the Napkin iPhone-app updater: copies renew.py out of ~/Documents (so the background job
 # never needs access to it) and loads a LaunchAgent that runs `renew.py renew` every 3 hours and at login.
-# Undo: launchctl bootout gui/$UID/com.abodh.tote.renew; rm ~/Library/LaunchAgents/com.abodh.tote.renew.plist
+# Undo: launchctl bootout gui/$UID/com.abodh.napkin.renew; rm ~/Library/LaunchAgents/com.abodh.napkin.renew.plist
 set -e
 HERE=${0:A:h}
-DEST="$HOME/Library/Application Support/Tote"
-PLIST="$HOME/Library/LaunchAgents/com.abodh.tote.renew.plist"
-mkdir -p "$DEST" "$HOME/Library/Logs/Tote"
+DEST="$HOME/Library/Application Support/Napkin"
+PLIST="$HOME/Library/LaunchAgents/com.abodh.napkin.renew.plist"
+mkdir -p "$DEST" "$HOME/Library/Logs/Napkin"
 cp "$HERE/renew.py" "$DEST/renew.py"
 chmod +x "$DEST/renew.py"
 cat > "$PLIST" <<EOF
@@ -15,7 +15,7 @@ cat > "$PLIST" <<EOF
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>com.abodh.tote.renew</string>
+	<string>com.abodh.napkin.renew</string>
 	<key>ProgramArguments</key>
 	<array>
 		<string>/usr/bin/python3</string>
@@ -29,10 +29,10 @@ cat > "$PLIST" <<EOF
 	<key>Nice</key>
 	<integer>10</integer>
 	<key>StandardErrorPath</key>
-	<string>$HOME/Library/Logs/Tote/renew-errors.log</string>
+	<string>$HOME/Library/Logs/Napkin/renew-errors.log</string>
 </dict>
 </plist>
 EOF
-launchctl bootout "gui/$UID/com.abodh.tote.renew" 2>/dev/null || true
+launchctl bootout "gui/$UID/com.abodh.napkin.renew" 2>/dev/null || true
 launchctl bootstrap "gui/$UID" "$PLIST"
-echo "renewer installed: every 3 hours · log ~/Library/Logs/Tote/renew.log"
+echo "updater installed: every 3 hours · log ~/Library/Logs/Napkin/renew.log"

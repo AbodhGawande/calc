@@ -1,16 +1,17 @@
-# Tote
+# Napkin
 
-(Named "Calc" until version 10. The repo, web address and saved-data keys still say `calc`, on purpose:
-changing them would move the app to a new address and lose what's saved on the phone.)
+(Named "Calc" until version 10 and "Tote" until version 25. The repo, web address and saved-data keys still say
+`calc`, on purpose: changing them would move the app to a new address and lose what's saved on the phone.)
 
 A calculator page in the style of Apple's Math Notes, with a calculator keypad, free editing,
 brackets anywhere, and USD ⇄ INR conversion. Built as a Home Screen web app (PWA): plain
 HTML/CSS/JS, no build step, no dependencies.
 
 ## Native iPhone app
-`ios/` wraps these same files in a native app (`ios/README.md`): built and installed over Wi-Fi with free signing,
-renewed every few days by `ios/tools/renew.py`. The app also keeps a history of cleared pages (‹ ›), saved to
-iCloud Drive. The web version below stays as it is (no history), for sharing.
+`ios/` wraps these same files in a native app (`ios/README.md`): built and installed over Wi-Fi (paid developer
+team, signing lasts a year), kept up to date by `ios/tools/renew.py`. The app also keeps a history of put-away pages
+(‹ ›), saved in its own iCloud folder (iCloud Drive › Napkin); its Clear button reads **Clear/New**, since the page is
+kept. The web version below stays as it is (no history), for sharing.
 
 ## Install on iPhone (web version)
 1. Open https://abodhgawande.github.io/calc/ in **Safari**.
