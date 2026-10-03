@@ -14,7 +14,7 @@
   const MIN = 60000;
   const OPS = '+−×÷-*/';
   const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
-  const APP_VERSION = 27; // shown at the bottom of the help page; bump together with VERSION in sw.js
+  const APP_VERSION = 28; // shown at the bottom of the help page; bump together with VERSION in sw.js
   const FS_MIN = 22, FS_MAX = 36; // page text size: starts at FS_MAX, never smaller than FS_MIN
 
   // ---------- storage ----------
@@ -26,27 +26,6 @@
   function save(key, value) {
     try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { toast('Storage full — share the page as text and clear it'); }
   }
-
-  const EXAMPLE_PAGE = [
-    'Dinner with friends',
-    '45 pizza + 18 drinks + 12 dessert = bill',
-    'bill + 18% = total',
-    'total ÷ 4 = each',
-    '',
-    'Road trip',
-    '320 mi to km',
-    '9 gal to L',
-    '',
-    'Rent in rupees',
-    '1500 $ to ₹',
-    '',
-    'Workout this week',
-    '3 × 45 min = gym',
-    'gym min to hr',
-    '',
-    'Call with Mumbai',
-    '5 pm cst to ist',
-  ].join('\n');
 
   const $ = id => document.getElementById(id);
   const els = {
@@ -69,10 +48,7 @@
       text = E.migrateV1(v1).join('\n');
       updatedAt = Date.now();
       if (text) notice = 'Your earlier calculations are on the page';
-    } else {
-      // The very first launch: a worked example instead of an empty page.
-      text = EXAMPLE_PAGE;
-    }
+    }                                              // otherwise the very first launch: a blank page, behind the guide
   }
   const modern = E.modernizeNames(text); // older "→ name" / "=name" lines → "… = name" (or "200 var")
   if (modern !== text) { text = modern; updatedAt = Date.now(); notice = notice || 'Named lines now read “= name”'; }
@@ -840,7 +816,9 @@
   // Clear puts the page away instead of losing it; ‹ › step through put-away pages (newest first), like Antinote.
   // An old page can be edited (it moves to the top at the next Clear) or deleted; pages go after a year.
   // Storage is the app's (ios/Napkin/History.swift): its own copy plus a text file per page in its iCloud folder.
-  const NATIVE = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.napkin;
+  // (settings.plain makes the iPhone app behave like the web version — tools/make_intro.py takes the web guide's
+  // pictures that way.)
+  const NATIVE = !settings.plain && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.napkin;
   const YEAR = 365 * 24 * 60 * MIN;
   let hist = [];           // put-away pages, newest first: { id, created, edited, text }
   let viewing = null;      // id of the history page on screen, or null for the live page
@@ -1031,8 +1009,11 @@
     setTimeout(() => NATIVE.postMessage({ type: 'histReady' }));     // once share.js is ready to write pages out
   }
 
-  // ---------- help ----------
-  window.HelpSheet.init({ version: APP_VERSION, onOpen: closeMenu });
+  // ---------- help, and the first-launch guide (intro.js) ----------
+  const INTRO = 1;         // raise it to show the guide once more to everyone
+  window.Intro.init({ native: !!NATIVE, onDone() { settings.intro = INTRO; save(K.settings, settings); ensureFocus(); } });
+  window.HelpSheet.init({ version: APP_VERSION, onOpen: closeMenu, intro: window.Intro.open });
+  if (settings.intro !== INTRO) window.Intro.open();
 
   // ---------- currency rates (rates.js) and share (share.js) ----------
   window.Rates.init({ onChange: refresh, toast });

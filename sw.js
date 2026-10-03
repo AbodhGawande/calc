@@ -1,6 +1,6 @@
 /* Offline support: the whole app is cached on install and served from the cache.
    Bump VERSION on every deploy — that is what makes phones pick up the new files. */
-const VERSION = 'calc-v27'; // keep the number in step with APP_VERSION in app.js
+const VERSION = 'calc-v28'; // keep the number in step with APP_VERSION in app.js
 const ASSETS = [
   './',
   './index.html',
@@ -11,12 +11,16 @@ const ASSETS = [
   './convert.js',
   './help.js',
   './share.js',
+  './intro.js',
   './app.js',
   './manifest.webmanifest',
   './icons/apple-touch-icon.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
+  // the guide's screenshots (intro.js; the web version's set)
+  './intro/data.js',
+  ...['1a', '1b', '1c', '2a', '2b', '2c', '3a', '3b', '3c', '4a', '4b', '4c'].map(n => `./intro/w${n}.webp`),
 ];
 
 self.addEventListener('install', event => {

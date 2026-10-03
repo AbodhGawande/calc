@@ -1,5 +1,5 @@
 /* The help page: a stack of small example cards drawn in the page's own style, one caption each.
-   app.js calls HelpSheet.init({ version }) and HelpSheet.open(). */
+   app.js calls HelpSheet.init({ version, intro }) and HelpSheet.open(). */
 (function () {
   'use strict';
 
@@ -85,7 +85,7 @@
     return box;
   }
 
-  let built = false, version = '';
+  let built = false, version = '', replay = () => {};
   function build() {
     const body = $('helpBody');
     body.textContent = '';
@@ -94,6 +94,9 @@
     const chip = el('span', 'help-chip');
     chip.append(el('span', 'help-app', 'Napkin'), el('span', 'help-ver', 'v' + version), el('span', 'help-dot', '·'), el('span', 'help-maker', 'Abodh SG'));
     about.appendChild(chip);
+    const again = el('button', 'help-intro', 'Replay the guide');
+    again.addEventListener('click', () => { close(); replay(); });
+    about.appendChild(again);
     body.appendChild(about);
     const native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.napkin;
     for (const c of CARDS) if (native ? !c.web : !c.native) body.appendChild(card(c));
@@ -114,6 +117,7 @@
   }
   function init(o) {
     version = o.version;
+    if (o.intro) replay = o.intro;
     $('helpBtn').addEventListener('click', () => { if (o.onOpen) o.onOpen(); open(); });
     $('helpDone').addEventListener('click', close);
   }

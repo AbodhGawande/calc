@@ -43,8 +43,13 @@ kept. The web version below stays as it is (no history), for sharing.
   Names show in blue; their chips above the keypad (most recent first) insert them (after a number, `×` is added).
   **Name…** above the keypad, or an answer's **Name**, names a line without the keyboard (writes `… = rent`, or
   `200 rent` for a plain number). Older `→ rent` / `=rent` lines are rewritten the current way on launch.
-- **Help:** the `?` button opens a guide made of example cards (`help.js`). The very first launch seeds the page with a
-  worked example (`EXAMPLE_PAGE` in `app.js`) instead.
+- **Help:** the `?` button opens a guide made of example cards (`help.js`).
+- **First-launch guide** (`intro.js`): shown once (`settings.intro`; raise `INTRO` in `app.js` to show it again to
+  everyone), replayable from the top of the help page. A few pages to swipe through, each a title of four words at
+  most over a drawn phone that plays real screenshots in a loop, with small labels pointing at what matters. The
+  screenshots and label positions (`intro/*.webp`, `intro/data.js`) are made from the simulator by
+  `tools/make_intro.py` — rerun it when the look of the app changes. The web version has its own set (`w*.webp`, four
+  pages: no history). The page starts blank behind the guide.
 - **ABC** brings up the iPhone keyboard for words. The orange calculator button in the top bar brings the keypad back.
 - **Conversions** (`units.js`): type `50 km to mi`, `5 ft 10 in to cm`, `180 cm to ft` (feet always show as feet and
   inches), `72 f to c`, `100 $ to ₹`, `3 pm cst to ist`. Weight, length, speed, volume, area, fuel, temperature,
@@ -69,11 +74,11 @@ which iOS can wipe, so share it to Notes now and then.
 - `units.js`: conversion table, currency and time zones (pure, tested)
 - `app.js`: editor, keypad, answers, names
 - `rates.js`: exchange rates (fetch, cache, rate line) · `share.js`: share as text/picture
-- `convert.js`: the ⇄ sheet · `help.js`: the help cards
+- `convert.js`: the ⇄ sheet · `help.js`: the help cards · `intro.js` + `intro/`: the first-launch guide
 - `style.css`, `index.html`, `manifest.webmanifest`, `icons/`
 - `sw.js`: offline cache
 - `tests/`: run `node --test tests/engine.test.js tests/units.test.js`
-- `tools/make_icons.py`: regenerates the icons (needs Pillow)
+- `tools/make_icons.py`: regenerates the icons (needs Pillow) · `tools/make_intro.py`: the guide's screenshots
 
 ## Deploying a change
 Bump `VERSION` in `sw.js` (e.g. `calc-v10`) with every change, otherwise phones keep the cached old version, and

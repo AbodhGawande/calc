@@ -162,7 +162,7 @@ def fetch_source():
 def app_tree():
     """Fingerprint of the app's own files in the clone: the web files it bundles + ios/ (README/tools don't count)."""
     r = run(["git", "-C", SRC, "ls-tree", "-r", "HEAD", "--", "index.html", "style.css", "manifest.webmanifest", "icons",
-             "units.js", "engine.js", "rates.js", "convert.js", "help.js", "share.js", "app.js",
+             "units.js", "engine.js", "rates.js", "convert.js", "help.js", "share.js", "intro.js", "app.js", "intro",
              "ios/Napkin", "ios/Napkin.xcodeproj", "ios/Napkin-Info.plist", "ios/Napkin.entitlements"], 30)
     if r.returncode or not r.stdout.strip():
         return None

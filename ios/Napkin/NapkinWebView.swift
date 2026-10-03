@@ -39,7 +39,7 @@ final class BundleFiles: NSObject, WKURLSchemeHandler {
     private let root = Bundle.main.resourceURL!.appendingPathComponent("Web", isDirectory: true).standardizedFileURL
     private static let types = [
         "html": "text/html; charset=utf-8", "css": "text/css; charset=utf-8", "js": "text/javascript; charset=utf-8",
-        "png": "image/png", "json": "application/json", "webmanifest": "application/manifest+json",
+        "png": "image/png", "webp": "image/webp", "json": "application/json", "webmanifest": "application/manifest+json",
     ]
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
