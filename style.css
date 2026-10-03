@@ -405,6 +405,11 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .intro-shot { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 0.5s; -webkit-user-drag: none; pointer-events: none; }
 .intro-shot.was { opacity: 1; z-index: 1; transition: none; }
 .intro-shot.on { opacity: 1; z-index: 2; }
+/* a page whose phone must show whole (Safari's buttons are at its foot): sized to the room there is, no fade */
+.intro-stage { container-type: size; }
+.intro-stage.whole { -webkit-mask-image: none; mask-image: none; align-items: flex-start; }
+.intro-stage.whole .intro-phone { width: min(80cqw, 372px, calc((100cqh - 18px) / 2.2)); }
+.intro-icon { align-self: center; width: min(46cqw, 190px); border-radius: 22.5%; box-shadow: 0 0 0 1px #3a3a3c, 0 18px 60px rgba(255, 159, 10, 0.28); margin-bottom: 12cqh; }
 .intro-island { position: absolute; z-index: 3; top: 2.9cqw; left: 50%; width: 29cqw; height: 8.6cqw; margin-left: -14.5cqw; border-radius: 4.3cqw; background: #0a0a0b; box-shadow: inset 0 0 0 0.3cqw #17171a; }
 /* over the screen (not clipped by the phone, so a label may overhang its edge) */
 .intro-over { position: absolute; top: 2.6cqw; left: 2.6cqw; right: 2.6cqw; z-index: 4; pointer-events: none; }

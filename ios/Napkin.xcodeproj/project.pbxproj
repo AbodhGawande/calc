@@ -126,7 +126,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# The page itself: the web files at the top of this repo (the same ones GitHub Pages serves), minus the\n# offline service worker, which an app doesn't need.\nWEB=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Web\"\nrm -rf \"$WEB\"\nmkdir -p \"$WEB\"\ncd \"${SRCROOT}/..\"\nfor f in index.html style.css manifest.webmanifest *.js; do [ \"$f\" = sw.js ] || cp \"$f\" \"$WEB/\"; done\ncp -R icons intro \"$WEB/\"\n";
+			shellScript = "# The page itself: the web files at the top of this repo (the same ones GitHub Pages serves), minus the\n# offline service worker, which an app doesn't need.\nWEB=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Web\"\nrm -rf \"$WEB\"\nmkdir -p \"$WEB\"\ncd \"${SRCROOT}/..\"\nfor f in index.html style.css manifest.webmanifest *.js; do [ \"$f\" = sw.js ] || cp \"$f\" \"$WEB/\"; done\ncp -R icons intro \"$WEB/\"\nrm -rf \"$WEB\"/intro/7*.webp \"$WEB\"/icons/launch   # only the web version uses these (Home Screen steps, launch screens)\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

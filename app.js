@@ -14,7 +14,7 @@
   const MIN = 60000;
   const OPS = '+−×÷-*/';
   const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
-  const APP_VERSION = 29; // shown at the bottom of the help page; bump together with VERSION in sw.js
+  const APP_VERSION = 30; // shown at the bottom of the help page; bump together with VERSION in sw.js
   const FS_MIN = 22, FS_MAX = 36; // page text size: starts at FS_MAX, never smaller than FS_MIN
 
   // ---------- storage ----------
@@ -1006,8 +1006,22 @@
 
   // ---------- help, and the first-launch guide (intro.js) ----------
   const INTRO = 1;         // raise it to show the guide once more to everyone
-  window.Intro.init({ onDone() { settings.intro = INTRO; save(K.settings, settings); ensureFocus(); } });
-  window.HelpSheet.init({ version: APP_VERSION, onOpen: closeMenu, intro: window.Intro.open });
+  // Putting the web version on the Home Screen. A page can't do that itself on an iPhone (only Safari's own menu
+  // can), so there the guide's last page shows the taps ('steps'); browsers that let a page offer it (Android,
+  // Chrome on a computer) hand over an install offer, which our button then triggers in one tap ('prompt').
+  // Neither in the iPhone app, nor once it's running from the Home Screen.
+  let installOffer = null;
+  const onHomeScreen = navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installOffer = e; });
+  window.addEventListener('appinstalled', () => { installOffer = null; });
+  const installWay = () => NATIVE || onHomeScreen ? null : installOffer ? 'prompt' : 'standalone' in navigator ? 'steps' : null;
+  const installNow = () => { const offer = installOffer; installOffer = null; if (offer) offer.prompt(); };
+  window.Intro.init({ install: installWay, onInstall: installNow, onDone() { settings.intro = INTRO; save(K.settings, settings); ensureFocus(); } });
+  window.HelpSheet.init({
+    version: APP_VERSION, onOpen: closeMenu, intro: () => window.Intro.open(),
+    canAddHome: () => !!installWay(),
+    addHome: () => (installWay() === 'prompt' ? installNow() : window.Intro.open('install')),
+  });
   if (settings.intro !== INTRO) window.Intro.open();
 
   // ---------- currency rates (rates.js) and share (share.js) ----------

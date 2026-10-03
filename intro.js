@@ -1,8 +1,12 @@
 /* The first-launch guide: a few pages to swipe through. Each is a short title (four words at most) over a phone
    showing real screenshots of the app that play in a loop, with small labels pointing at what matters — the
    pictures do the explaining, not the words.
-   app.js calls Intro.init({ onDone }) and Intro.open(). The pictures and where the labels go come from
-   intro/data.js, made by tools/make_intro.py. */
+   app.js calls Intro.init({ onDone, install, onInstall }) and Intro.open(). The pictures and where the labels go
+   come from intro/data.js, made by tools/make_intro.py.
+   The last page, "Add to Home Screen", is only for the web version in a browser (install() says how it can be done
+   there): 'steps' = an iPhone, where only Safari's own menu can do it, so the page shows those taps; 'prompt' = a
+   browser that lets the page offer it, so the page's button does it in one tap; nothing = no such page (the iPhone
+   app, or already on the Home Screen). */
 (function () {
   'use strict';
 
@@ -15,11 +19,11 @@
   };
 
   // One per page of intro/data.js, in order.
-  const TITLES = ['Answers as you type', 'Add brackets anywhere', 'Words name numbers', 'Add line by line', 'Convert by typing', 'Old pages are kept'];
+  const TITLES = ['Answers as you type', 'Add brackets anywhere', 'Words name numbers', 'Add line by line', 'Convert by typing', 'Old pages are kept', 'Add to Home Screen'];
   const STEP = 1500;      // how long a screenshot stays up
   const HOLD = 2800;      // … and the last one of a page, before it starts again
 
-  let deps = {}, pages = [], built = false, current = 0, frame = 0, timer = null;
+  let deps = {}, pages = [], built = false, builtFor = null, current = 0, frame = 0, timer = null;
   const root = () => $('intro');
 
   // A phone with the page's screenshots stacked in it, and over the screen its labels (each with a line to the spot
@@ -71,20 +75,29 @@
   function build() {
     const r = root(), data = window.INTRO_SHOTS || {};
     const [W, H] = data.size || [1206, 2622];
-    pages = data.pages || [];
+    const how = deps.install ? deps.install() : null;
+    pages = (data.pages || []).map((p, i) => Object.assign({ title: TITLES[i] }, p)).filter(p => !p.when || (p.when === 'install' && how === 'steps'));
+    if (how === 'prompt') pages.push({ title: 'Add to Home Screen', prompt: true });
     const top = el('div', 'intro-top');
     const skip = el('button', 'intro-skip', 'Skip');
     skip.addEventListener('click', close);
     top.appendChild(skip);
     const strip = el('div', 'intro-pages');
     strip.id = 'introPages';
-    pages.forEach((p, i) => {
+    for (const p of pages) {
       const sec = el('section', 'intro-page');
-      const stage = el('div', 'intro-stage');
-      stage.appendChild(phone(p, W, H));
-      sec.append(el('h2', '', TITLES[i]), stage);
+      const stage = el('div', 'intro-stage' + (p.whole || p.prompt ? ' whole' : ''));
+      if (p.prompt) {                     // nothing to show how: the button below does it. Just the app's icon.
+        const icon = el('img', 'intro-icon');
+        icon.src = 'icons/icon-512.png';
+        icon.alt = '';
+        stage.appendChild(icon);
+        p.imgs = [];
+        p.marks = [];
+      } else stage.appendChild(phone(p, W, H));
+      sec.append(el('h2', '', p.title), stage);
       strip.appendChild(sec);
-    });
+    }
     const foot = el('div', 'intro-foot');
     const dots = el('div', 'intro-dots');
     dots.id = 'introDots';
@@ -92,7 +105,8 @@
     const next = el('button', 'intro-next', 'Next');
     next.id = 'introNext';
     next.addEventListener('click', () => {
-      if (current >= pages.length - 1) close();
+      if (pages[current].prompt) { if (deps.onInstall) deps.onInstall(); close(); }
+      else if (current >= pages.length - 1) close();
       else strip.scrollTo({ left: (current + 1) * strip.clientWidth, behavior: 'smooth' });
     });
     foot.append(dots, next);
@@ -107,7 +121,7 @@
   function show(i) {
     current = i;
     [...$('introDots').children].forEach((d, n) => d.classList.toggle('on', n === i));
-    $('introNext').textContent = i >= pages.length - 1 ? 'Start' : 'Next';
+    $('introNext').textContent = pages[i].prompt ? 'Add to Home Screen' : i >= pages.length - 1 ? 'Start' : 'Next';
     play();
   }
   // The new screenshot fades in over the one before it (which stays put underneath, so nothing dips to black);
@@ -124,6 +138,7 @@
   function play() {
     clearTimeout(timer);
     const count = pages[current].imgs.length;
+    if (!count) return;
     setFrame(0);
     const tick = () => {
       const n = (frame + 1) % count;
@@ -133,15 +148,19 @@
     timer = setTimeout(tick, STEP);
   }
 
-  function open() {
-    if (!built) { build(); built = true; }
+  // open('install') goes straight to the "Add to Home Screen" page (from the help page).
+  function open(which) {
+    const how = deps.install ? deps.install() : null;
+    if (built && how !== builtFor) { root().textContent = ''; built = false; }   // what the browser allows has changed
+    if (!built) { build(); built = true; builtFor = how; }
     if (!pages.length) { if (deps.onDone) deps.onDone(); return; }
     const r = root();
     r.classList.add('open');
     r.inert = false;
     r.setAttribute('aria-hidden', 'false');
-    $('introPages').scrollLeft = 0;
-    show(0);
+    const at = which === 'install' ? pages.length - 1 : 0, strip = $('introPages');
+    strip.scrollLeft = at * strip.clientWidth;
+    show(at);
   }
   function close() {
     clearTimeout(timer);

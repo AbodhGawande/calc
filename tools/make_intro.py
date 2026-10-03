@@ -8,9 +8,15 @@ of the app running in the iOS Simulator. intro.js shows them inside a drawn phon
   python3 tools/make_intro.py build      only rebuild intro/ from the photos already taken (after changing a note)
 
 The web version looks the same, so both use these pictures. For each picture the app is reinstalled empty in the
-simulator, given a saved page (and history), opened and photographed (photos are kept in /tmp/napkin-intro-shots). `build` saves each photo small, finds the written lines / answers / name chips in it, and writes data.js:
+simulator, given a saved page (and history), opened and photographed (photos are kept in ~/Library/Caches/Napkin/intro-shots). `build` saves each photo small, finds the written lines / answers / name chips in it, and writes data.js:
 for each guide page, its pictures and its notes (words, the spot they point at, where the label sits).
 Titles and order are in intro.js.
+
+The last page ("Add to Home Screen", 7a–7d) is Safari, not the app, so it is photographed by hand: with the
+simulator in dark appearance (xcrun simctl ui <SIM> appearance dark), open the web version in its Safari
+(xcrun simctl openurl <SIM> https://abodhgawande.github.io/calc/), skip the guide, type 45+18, then save a screenshot
+(xcrun simctl io <SIM> screenshot …/7a.png) of: 7a the page · 7b the page menu (≡ in the address bar) open ·
+7c after tapping Share · 7d after tapping View More. If Safari has moved things, change the numbers in 7a–7d below.
 
 Needs the simulator build first (it photographs that app):
   xcodebuild -project ios/Napkin.xcodeproj -scheme Napkin -configuration Debug \
@@ -25,7 +31,7 @@ OUT = ROOT / "intro"
 SIM = "C603D1E3-1E78-40C9-80B0-3819E696BA8C"          # iPhone 18 Pro
 BID = "com.abodh.napkin"
 APP = ROOT / "ios/build/sim/Build/Products/Debug-iphonesimulator/Napkin.app"
-SHOTS = Path("/tmp/napkin-intro-shots")
+SHOTS = Path.home() / "Library/Caches/Napkin/intro-shots"      # the photos, kept between runs
 
 # where things are on that screen, in pixels
 W, CUT = 1206, 2622                                             # the picture is the whole screen
@@ -63,7 +69,7 @@ def with_bill(now):
 # tap: needs a tap in the simulator before the photo (seed, tap, shoot); hide: a patch of the photo to paint over;
 # notes: (words, what they point at, where the label's middle sits from that spot: right, down). Spots:
 #   line N (middle of line N) · start N (its first letter) · word N K (its K-th blue word) · answer N · chip K ·
-#   a BUTTONS name. Lines, words and chips count from 1.
+#   a BUTTONS name · xy X Y (that very spot). Lines, words and chips count from 1.
 JUST, ANSWER = ("Just type", "start 1", 160, 200), ("Answer appears", "answer 1", -190, 400)
 LIST = ("Or pick from a list", "conv", 150, -236)
 FRAMES = {
@@ -87,8 +93,17 @@ FRAMES = {
     "6a": dict(text="\n" + BILL, history=old_pages, ring="clear", notes=[("New page", "clear", 0, 78)]),
     "6b": dict(text="", history=with_bill, ring="older", notes=[("Go back", "older", 90, 78)]),
     "6c": dict(text="", history=with_bill, tap="‹ (older page)", hide=(646, 358, 880, 436), notes=[("Your old page", "histbar", 0, 84)]),
+    # Safari's own steps (photographed by hand, see the top): ring = the thing to tap, as (left, top, right, bottom)
+    "7a": dict(manual=True, ring=(290, 2394, 398, 2502), notes=[("Tap here", "xy 344 2380", 170, -170)]),
+    "7b": dict(manual=True, ring=(318, 994, 650, 1110), notes=[("Share", "xy 484 980", 200, -150)]),
+    "7c": dict(manual=True, ring=(898, 2222, 1098, 2422), notes=[("View More", "xy 998 2208", -150, -130)]),
+    "7d": dict(manual=True, ring=(84, 1990, 716, 2108), notes=[("This one", "xy 730 2049", 230, 0)]),
 }
-PAGES = ["1", "2", "3", "4", "5", "6"]
+# pages shown only in some places: "install" = the web version in a browser on an iPhone, not yet on the Home Screen
+WHEN = {"7": "install"}
+# pages whose phone is shown whole (Safari's buttons are at the bottom, where the other pages' phones fade out)
+WHOLE = {"7"}
+PAGES = ["1", "2", "3", "4", "5", "6", "7"]
 
 
 def simctl(*args, check=True):
@@ -190,6 +205,8 @@ def spot(spec, lines, chips):
     """The point a note points at: just under what's written, just above a key or chip."""
     kind, *n = spec.split()
     n = [int(v) for v in n]
+    if kind == "xy":
+        return n[0], n[1]
     if kind in BUTTONS:
         x0, y0, x1, y1 = BUTTONS[kind]
         return ((x0 + x1) // 2, y0 - 26) if kind in ("conv", "open", "close") else ((x0 + x1) // 2, y1 + 24)
@@ -226,7 +243,7 @@ def build():
                 im.paste(im.getpixel((x0 - 8, (y0 + y1) // 2)), f["hide"])
             small = im.crop((0, 0, W, CUT)).resize((WIDTH, round(CUT * WIDTH / W)), Image.LANCZOS)
             small.save(OUT / f"{name}.webp", "WEBP", quality=84, method=6)
-            lines, chips = layout(im)
+            lines, chips = (None, None) if f.get("manual") else layout(im)
             for words, spec, dx, dy in f.get("notes", []):
                 tx, ty = spot(spec, lines, chips)
                 half = (len(words) * 0.52 + 1.7) * LABEL / 2       # about half the label's width
@@ -239,14 +256,14 @@ def build():
                 else:
                     notes.append({**note, "frames": [i]})
             if f.get("ring"):
-                x0, y0, x1, y1 = BUTTONS[f["ring"]]
+                x0, y0, x1, y1 = f["ring"] if isinstance(f["ring"], tuple) else BUTTONS[f["ring"]]
                 box = [round(x0 / W, 4), round(y0 / CUT, 4), round(x1 / W, 4), round(y1 / CUT, 4)]
                 same = next((r for r in rings if r["box"] == box), None)
                 if same:
                     same["frames"].append(i)
                 else:
                     rings.append({"box": box, "frames": [i]})
-        data["pages"].append({"shots": shots, "notes": notes, "rings": rings})
+        data["pages"].append({"shots": shots, "notes": notes, "rings": rings, **({"when": WHEN[page]} if page in WHEN else {}), **({"whole": True} if page in WHOLE else {})})
     (OUT / "data.js").write_text("/* Made by tools/make_intro.py: the guide's pictures and where their notes go (fractions of the picture). */\n"
                                  "window.INTRO_SHOTS = " + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + ";\n")
     size = sum(p.stat().st_size for p in OUT.glob("*.webp")) // 1024
@@ -266,7 +283,7 @@ if __name__ == "__main__":
     elif args[:1] == ["build"]:
         build()
     else:
-        for name in args or [n for n in every if not FRAMES[n].get("tap")]:
+        for name in args or [n for n in every if not FRAMES[n].get("tap") and not FRAMES[n].get("manual")]:
             seed(name)
             shoot(name)
         if all((SHOTS / f"{n}.png").exists() for n in every):

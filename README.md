@@ -52,6 +52,11 @@ stays on the phone only (a web page can't write to iCloud Drive).
   most over a drawn phone that plays real screenshots in a loop, with small labels pointing at what matters. The
   screenshots and label positions (`intro/*.webp`, `intro/data.js`) are made from the simulator by
   `tools/make_intro.py` — rerun it when the look of the app changes. The page starts blank behind the guide.
+- **Add to Home Screen** (web version only; never in the iPhone app, nor once it runs from the Home Screen): a page
+  can't add itself on an iPhone — only Safari's own menu can — so there the guide ends with a page playing those taps
+  (page menu ▸ Share ▸ View More ▸ Add to Home Screen; real Safari screenshots, `intro/7a–7d`), and the help page has
+  an **Add to Home Screen** button that opens it. In browsers that let a page offer it (Android, Chrome on a
+  computer: `beforeinstallprompt`), the same button, and the guide's last page, do it in one tap.
 - **ABC** brings up the iPhone keyboard for words. The orange calculator button in the top bar brings the keypad back.
 - **Conversions** (`units.js`): type `50 km to mi`, `5 ft 10 in to cm`, `180 cm to ft` (feet always show as feet and
   inches), `72 f to c`, `100 $ to ₹`, `3 pm cst to ist`. Weight, length, speed, volume, area, fuel, temperature,

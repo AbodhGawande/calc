@@ -1,5 +1,5 @@
 /* The help page: a stack of small example cards drawn in the page's own style, one caption each.
-   app.js calls HelpSheet.init({ version, intro }) and HelpSheet.open(). */
+   app.js calls HelpSheet.init({ version, intro, canAddHome, addHome }) and HelpSheet.open(). */
 (function () {
   'use strict';
 
@@ -84,7 +84,7 @@
     return box;
   }
 
-  let built = false, version = '', replay = () => {};
+  let built = false, version = '', replay = () => {}, canAddHome = () => false, addHome = () => {};
   function build() {
     const body = $('helpBody');
     body.textContent = '';
@@ -96,12 +96,18 @@
     const again = el('button', 'help-intro', 'Replay the guide');
     again.addEventListener('click', () => { close(); replay(); });
     about.appendChild(again);
+    // Web version in a browser: how to put it on the Home Screen (one tap where the browser allows it).
+    const home = el('button', 'help-intro', 'Add to Home Screen');
+    home.id = 'helpHome';
+    home.addEventListener('click', () => { close(); addHome(); });
+    about.appendChild(home);
     body.appendChild(about);
     const native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.napkin;
     for (const c of CARDS) if (native ? !c.web : !c.native) body.appendChild(card(c));
   }
   function open() {
     if (!built) { build(); built = true; }
+    $('helpHome').hidden = !canAddHome();
     const h = $('help');
     h.classList.add('open');
     h.inert = false;
@@ -117,6 +123,7 @@
   function init(o) {
     version = o.version;
     if (o.intro) replay = o.intro;
+    if (o.canAddHome) { canAddHome = o.canAddHome; addHome = o.addHome; }
     $('helpBtn').addEventListener('click', () => { if (o.onOpen) o.onOpen(); open(); });
     $('helpDone').addEventListener('click', close);
   }
