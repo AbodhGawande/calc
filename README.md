@@ -45,7 +45,7 @@ kept. The web version below stays as it is (no history), for sharing.
   `200 rent` for a plain number). Older `→ rent` / `=rent` lines are rewritten the current way on launch.
 - **Help:** the `?` button opens a guide made of example cards (`help.js`). The very first launch seeds the page with a
   worked example (`EXAMPLE_PAGE` in `app.js`) instead.
-- **ABC** brings up the iPhone keyboard for words. The orange calculator button (top right) brings the keypad back.
+- **ABC** brings up the iPhone keyboard for words. The orange calculator button in the top bar brings the keypad back.
 - **Conversions** (`units.js`): type `50 km to mi`, `5 ft 10 in to cm`, `180 cm to ft` (feet always show as feet and
   inches), `72 f to c`, `100 $ to ₹`, `3 pm cst to ist`. Weight, length, speed, volume, area, fuel, temperature,
   11 currencies and 16 time zones. The `⇄` key opens a sheet of two-way rows (`convert.js`); `+` writes the row onto

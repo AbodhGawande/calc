@@ -59,7 +59,8 @@
     const page = el('div', 'hc-page');
     if (c.bar) {
       const bar = el('div', 'hc-bar');
-      bar.append(el('span', 'hc-btn hc-btn-text', c.bar), el('span', 'hc-btn', '⤴'), el('span', 'hc-btn', '?'), el('span', 'hc-spacer'), el('span', 'hc-btn', '↶'));
+      if (c.native) bar.append(el('span', 'hc-btn hc-btn-text', '‹  ›'));
+      bar.append(el('span', 'hc-btn hc-btn-text', c.bar), el('span', 'hc-spacer'), el('span', 'hc-btn', '↶'), el('span', 'hc-btn', '?'), el('span', 'hc-btn', '⤴'));
       page.appendChild(bar);
     }
     for (const [src, ans] of c.lines || []) {
