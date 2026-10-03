@@ -44,7 +44,7 @@ With iCloud off, history stays on the phone and the history bar says "Not in iCl
 `Application Support/Napkin/icloud.txt` logs what the app last did with iCloud; read it from the Mac with
 `xcrun devicectl device copy from --device <UDID> --domain-type appDataContainer --domain-identifier com.abodh.napkin
 --source "Library/Application Support/Napkin/icloud.txt" --destination /tmp/icloud.txt`.
-The web version has no history.
+The web version has the same history, kept on the phone only (`calc.pages` in localStorage).
 
 ## Moving a phone from Tote (done 2026-10-02 on both phones)
 Napkin is a different app to iOS, so Tote's page and history were copied across with `devicectl device copy from`

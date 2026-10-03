@@ -1,7 +1,7 @@
 /* The first-launch guide: a few pages to swipe through. Each is a short title (four words at most) over a phone
    showing real screenshots of the app that play in a loop, with small labels pointing at what matters — the
    pictures do the explaining, not the words.
-   app.js calls Intro.init({ native, onDone }) and Intro.open(). The pictures and where the labels go come from
+   app.js calls Intro.init({ onDone }) and Intro.open(). The pictures and where the labels go come from
    intro/data.js, made by tools/make_intro.py. */
 (function () {
   'use strict';
@@ -14,7 +14,7 @@
     return n;
   };
 
-  // One per page of intro/data.js, in order (the web version has no last page: no history there).
+  // One per page of intro/data.js, in order.
   const TITLES = ['Answers as you type', 'Add brackets anywhere', 'Words name numbers', 'Add line by line', 'Convert by typing', 'Old pages are kept'];
   const STEP = 1500;      // how long a screenshot stays up
   const HOLD = 2800;      // … and the last one of a page, before it starts again
@@ -31,6 +31,8 @@
     screen.style.aspectRatio = `${W} / ${H}`;
     p.imgs = p.shots.map(name => {
       const img = el('img', 'intro-shot');
+      img.loading = 'lazy';            // a page's pictures are fetched as it comes near, not all eighteen at once
+      img.decoding = 'async';
       img.src = `intro/${name}.webp`;
       img.alt = '';
       img.draggable = false;
@@ -69,7 +71,7 @@
   function build() {
     const r = root(), data = window.INTRO_SHOTS || {};
     const [W, H] = data.size || [1206, 2622];
-    pages = (deps.native ? data.native : data.web) || [];
+    pages = data.pages || [];
     const top = el('div', 'intro-top');
     const skip = el('button', 'intro-skip', 'Skip');
     skip.addEventListener('click', close);

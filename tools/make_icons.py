@@ -68,3 +68,23 @@ IOS = Path(__file__).resolve().parent.parent / "ios/Napkin/Assets.xcassets/AppIc
 if IOS.is_dir():
     full.convert("RGB").save(IOS / "icon-1024.png")
 print("icons written to", OUT)
+
+# ---------- launch screens for the Home Screen web app ----------
+# An iPhone shows a white screen while a Home Screen web app starts, unless the page offers a launch picture of
+# exactly the phone's size. These are plain black, like the page, so the app seems to open at once.
+# (width, height in points, pixels per point) — index.html has one <link rel="apple-touch-startup-image"> for each.
+LAUNCH = [(440, 956, 3), (430, 932, 3), (428, 926, 3), (420, 912, 3), (414, 896, 3), (414, 896, 2), (414, 736, 3),
+          (402, 874, 3), (393, 852, 3), (390, 844, 3), (375, 812, 3), (375, 667, 2)]
+
+
+def launch_screens():
+    out = OUT / "launch"
+    out.mkdir(exist_ok=True)
+    for w, h, r in LAUNCH:
+        im = Image.new("P", (w * r, h * r), 0)
+        im.putpalette([0, 0, 0])
+        im.save(out / f"{w}x{h}@{r}.png", optimize=True)
+    print("launch screens:", len(LAUNCH))
+
+
+launch_screens()

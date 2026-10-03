@@ -48,10 +48,13 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .tb-btn svg { width: 21px; height: 21px; }
 .tb-btn.off { color: #5c5c5f; }
 .tb-text { width: auto; padding: 0 16px; border-radius: 21px; font-size: 15px; font-weight: 500; }
+@media (max-width: 389px) {    /* narrow phones: the bar's buttons sit a little closer */
+  .topbar { gap: 7px; padding: 0 10px; }
+  .tb-text { padding: 0 12px; }
+}
 .tb-btn.accent { background: var(--op); }
-/* ‹ › history (iPhone app only): one pill, two halves */
-.hist-nav { display: none; }
-.native .hist-nav { display: inline-flex; border-radius: 21px; background: #1c1c1e; }
+/* ‹ › history: one pill, two halves */
+.hist-nav { display: inline-flex; border-radius: 21px; background: #1c1c1e; }
 .hist-nav .tb-btn { background: none; width: 44px; }
 .hist-nav .tb-btn svg { width: 19px; height: 19px; }
 .textmode .hist-nav { display: none; }

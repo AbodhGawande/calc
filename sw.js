@@ -1,6 +1,8 @@
-/* Offline support: the whole app is cached on install and served from the cache.
-   Bump VERSION on every deploy — that is what makes phones pick up the new files. */
-const VERSION = 'calc-v28'; // keep the number in step with APP_VERSION in app.js
+/* Offline support: the whole app is kept on the phone and opened from there — the internet is only used to look for
+   a new version (and for exchange rates). Bump VERSION on every deploy — that is what makes phones pick up the new
+   files. */
+const VERSION = 'calc-v29'; // keep the number in step with APP_VERSION in app.js
+// The app itself: fetched when a version is installed.
 const ASSETS = [
   './',
   './index.html',
@@ -18,10 +20,10 @@ const ASSETS = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
-  // the guide's screenshots (intro.js; the web version's set)
   './intro/data.js',
-  ...['1a', '1b', '1c', '2a', '2b', '2c', '3a', '3b', '3c', '4a', '4b', '4c', '5a', '5b', '5c'].map(n => `./intro/w${n}.webp`),
 ];
+// The guide's screenshots (intro.js): fetched afterwards, when the page asks, so a new version never waits for them.
+const PICTURES = ['1', '2', '3', '4', '5', '6'].flatMap(p => ['a', 'b', 'c'].map(f => `./intro/${p}${f}.webp`));
 
 self.addEventListener('install', event => {
   // cache: 'reload' skips the browser's own copy (GitHub Pages lets it keep files for 10 minutes),
@@ -38,11 +40,22 @@ self.addEventListener('activate', event => {
   );
 });
 
+// The page says "pictures" once it's up: store any of the guide's screenshots that aren't on the phone yet.
+self.addEventListener('message', event => {
+  if (event.data !== 'pictures') return;
+  event.waitUntil(caches.open(VERSION).then(cache => Promise.all(PICTURES.map(url =>
+    cache.match(url).then(hit => hit || cache.add(new Request(url, { cache: 'reload' })).catch(() => {}))))));
+});
+
 self.addEventListener('fetch', event => {
   const req = event.request;
   // Exchange-rate requests (other origins) go straight to the network; the app keeps its own saved copy.
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+  // From the phone's copy; anything not there yet is fetched once and kept.
   event.respondWith(
-    caches.match(req, { ignoreSearch: true }).then(hit => hit || fetch(req))
+    caches.match(req, { ignoreSearch: true }).then(hit => hit || fetch(req).then(res => {
+      if (res.ok) { const copy = res.clone(); caches.open(VERSION).then(cache => cache.put(req, copy)); }
+      return res;
+    }))
   );
 });

@@ -2,14 +2,13 @@
 of the app running in the iOS Simulator. intro.js shows them inside a drawn phone, with the notes as small labels.
 
   python3 tools/make_intro.py            photograph every picture that needs no tap, then build
-  python3 tools/make_intro.py 1a w5c     just those, then build
+  python3 tools/make_intro.py 1a 5c      just those, then build
   python3 tools/make_intro.py seed 6c    set that picture's page up in the simulator and stop (to tap something first) …
   python3 tools/make_intro.py shoot 6c   … then photograph it and build
   python3 tools/make_intro.py build      only rebuild intro/ from the photos already taken (after changing a note)
 
-Two sets: the iPhone app's (1a … 6c) and the web version's (w1a … w5c: no history buttons, so no page 6 — the app
-is put in its "plain" mode for those). For each picture the app is reinstalled empty in the simulator, given a saved
-page (and history), opened and photographed (photos are kept in /tmp/napkin-intro-shots). `build` saves each photo small, finds the written lines / answers / name chips in it, and writes data.js:
+The web version looks the same, so both use these pictures. For each picture the app is reinstalled empty in the
+simulator, given a saved page (and history), opened and photographed (photos are kept in /tmp/napkin-intro-shots). `build` saves each photo small, finds the written lines / answers / name chips in it, and writes data.js:
 for each guide page, its pictures and its notes (words, the spot they point at, where the label sits).
 Titles and order are in intro.js.
 
@@ -89,7 +88,7 @@ FRAMES = {
     "6b": dict(text="", history=with_bill, ring="older", notes=[("Go back", "older", 90, 78)]),
     "6c": dict(text="", history=with_bill, tap="‹ (older page)", hide=(646, 358, 880, 436), notes=[("Your old page", "histbar", 0, 84)]),
 }
-PAGES = {"native": ["1", "2", "3", "4", "5", "6"], "web": ["1", "2", "3", "4", "5"]}   # the last one is history: app only
+PAGES = ["1", "2", "3", "4", "5", "6"]
 
 
 def simctl(*args, check=True):
@@ -98,7 +97,7 @@ def simctl(*args, check=True):
 
 def seed(name):
     """A fresh copy of the app in the simulator with this picture's page saved in it, then opened."""
-    web, f = name.startswith("w"), FRAMES[name.lstrip("w")]
+    f = FRAMES[name]
     now = int(time.time() * 1000)
     simctl("status_bar", SIM, "override", "--time", "9:41", "--dataNetwork", "wifi", "--wifiMode", "active", "--wifiBars", "3",
            "--cellularMode", "active", "--cellularBars", "4", "--batteryState", "charged", "--batteryLevel", "100", check=False)
@@ -110,10 +109,10 @@ def seed(name):
     text = f["text"]
     saved = {
         "calc.note": json.dumps({"text": text, "sel": [f.get("caret", len(text))] * 2, "updatedAt": now}),
-        "calc.settings": json.dumps({"intro": 1, "plain": web}),   # the guide itself stays out of the picture
+        "calc.settings": json.dumps({"intro": 1}),                 # the guide itself stays out of the picture
     }
     (home / "storage.json").write_text(json.dumps(saved))
-    for page in (f["history"](now) if f.get("history") and not web else []):
+    for page in (f["history"](now) if f.get("history") else []):
         (home / "History" / (page["id"] + ".json")).write_text(json.dumps(page))
     simctl("launch", SIM, BID)
     time.sleep(3.5)                                                # the page, and the exchange rates, load
@@ -215,42 +214,39 @@ def spot(spec, lines, chips):
 def build():
     """intro/<name>.webp for every photo taken, and intro/data.js."""
     OUT.mkdir(exist_ok=True)
-    data = {"size": [W, CUT]}
-    for kind, pages in PAGES.items():
-        prefix = "w" if kind == "web" else ""
-        data[kind] = []
-        for page in pages:
-            shots = [prefix + n for n in FRAMES if n[0] == page]
-            notes, rings = [], []
-            for i, name in enumerate(shots):
-                f = FRAMES[name.lstrip("w")]
-                im = Image.open(SHOTS / f"{name}.png").convert("RGB")
-                if f.get("hide"):
-                    x0, y0, x1, y1 = f["hide"]
-                    im.paste(im.getpixel((x0 - 8, (y0 + y1) // 2)), f["hide"])
-                small = im.crop((0, 0, W, CUT)).resize((WIDTH, round(CUT * WIDTH / W)), Image.LANCZOS)
-                small.save(OUT / f"{name}.webp", "WEBP", quality=84, method=6)
-                lines, chips = layout(im)
-                for words, spec, dx, dy in f.get("notes", []):
-                    tx, ty = spot(spec, lines, chips)
-                    half = (len(words) * 0.52 + 1.7) * LABEL / 2       # about half the label's width
-                    cx = min(max(tx + dx, half + 26), W - half - 26)   # keep the whole label on the screen
-                    note = {"text": words, "tip": [round(tx / W, 4), round(ty / CUT, 4)], "at": [round(cx / W, 4), round((ty + dy) / CUT, 4)]}
-                    same = next((n for n in notes if n["text"] == words and i - 1 in n["frames"]
-                                 and abs(n["tip"][0] - note["tip"][0]) < 0.015 and abs(n["tip"][1] - note["tip"][1]) < 0.008), None)
-                    if same:
-                        same["frames"].append(i)                       # the same note stays up across pictures
-                    else:
-                        notes.append({**note, "frames": [i]})
-                if f.get("ring"):
-                    x0, y0, x1, y1 = BUTTONS[f["ring"]]
-                    box = [round(x0 / W, 4), round(y0 / CUT, 4), round(x1 / W, 4), round(y1 / CUT, 4)]
-                    same = next((r for r in rings if r["box"] == box), None)
-                    if same:
-                        same["frames"].append(i)
-                    else:
-                        rings.append({"box": box, "frames": [i]})
-            data[kind].append({"shots": shots, "notes": notes, "rings": rings})
+    data = {"size": [W, CUT], "pages": []}
+    for page in PAGES:
+        shots = [n for n in FRAMES if n[0] == page]
+        notes, rings = [], []
+        for i, name in enumerate(shots):
+            f = FRAMES[name]
+            im = Image.open(SHOTS / f"{name}.png").convert("RGB")
+            if f.get("hide"):
+                x0, y0, x1, y1 = f["hide"]
+                im.paste(im.getpixel((x0 - 8, (y0 + y1) // 2)), f["hide"])
+            small = im.crop((0, 0, W, CUT)).resize((WIDTH, round(CUT * WIDTH / W)), Image.LANCZOS)
+            small.save(OUT / f"{name}.webp", "WEBP", quality=84, method=6)
+            lines, chips = layout(im)
+            for words, spec, dx, dy in f.get("notes", []):
+                tx, ty = spot(spec, lines, chips)
+                half = (len(words) * 0.52 + 1.7) * LABEL / 2       # about half the label's width
+                cx = min(max(tx + dx, half + 26), W - half - 26)   # keep the whole label on the screen
+                note = {"text": words, "tip": [round(tx / W, 4), round(ty / CUT, 4)], "at": [round(cx / W, 4), round((ty + dy) / CUT, 4)]}
+                same = next((n for n in notes if n["text"] == words and i - 1 in n["frames"]
+                             and abs(n["tip"][0] - note["tip"][0]) < 0.015 and abs(n["tip"][1] - note["tip"][1]) < 0.008), None)
+                if same:
+                    same["frames"].append(i)                       # the same note stays up across pictures
+                else:
+                    notes.append({**note, "frames": [i]})
+            if f.get("ring"):
+                x0, y0, x1, y1 = BUTTONS[f["ring"]]
+                box = [round(x0 / W, 4), round(y0 / CUT, 4), round(x1 / W, 4), round(y1 / CUT, 4)]
+                same = next((r for r in rings if r["box"] == box), None)
+                if same:
+                    same["frames"].append(i)
+                else:
+                    rings.append({"box": box, "frames": [i]})
+        data["pages"].append({"shots": shots, "notes": notes, "rings": rings})
     (OUT / "data.js").write_text("/* Made by tools/make_intro.py: the guide's pictures and where their notes go (fractions of the picture). */\n"
                                  "window.INTRO_SHOTS = " + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + ";\n")
     size = sum(p.stat().st_size for p in OUT.glob("*.webp")) // 1024
@@ -259,10 +255,10 @@ def build():
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    every = [n for n in FRAMES] + ["w" + n for n in FRAMES if n[0] in PAGES["web"]]
+    every = list(FRAMES)
     if args[:1] == ["seed"]:
         seed(args[1])
-        tap = FRAMES[args[1].lstrip("w")].get("tap")
+        tap = FRAMES[args[1]].get("tap")
         print(f"{args[1]}: ready" + (f" — tap {tap}, then: make_intro.py shoot {args[1]}" if tap else ""))
     elif args[:1] == ["shoot"]:
         shoot(args[1])
@@ -270,7 +266,7 @@ if __name__ == "__main__":
     elif args[:1] == ["build"]:
         build()
     else:
-        for name in args or [n for n in every if not FRAMES[n.lstrip("w")].get("tap")]:
+        for name in args or [n for n in every if not FRAMES[n].get("tap")]:
             seed(name)
             shoot(name)
         if all((SHOTS / f"{n}.png").exists() for n in every):

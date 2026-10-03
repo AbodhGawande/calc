@@ -14,12 +14,12 @@
   const MIN = 60000;
   const OPS = '+−×÷-*/';
   const OPMAP = { '+': '+', '-': '−', '*': '×', '/': '÷' };
-  const APP_VERSION = 28; // shown at the bottom of the help page; bump together with VERSION in sw.js
+  const APP_VERSION = 29; // shown at the bottom of the help page; bump together with VERSION in sw.js
   const FS_MIN = 22, FS_MAX = 36; // page text size: starts at FS_MAX, never smaller than FS_MIN
 
   // ---------- storage ----------
   // localStorage is the only store. iOS may wipe it; sharing the page to Notes is the safety net.
-  const K = { note: 'calc.note', settings: 'calc.settings', v1: 'calc.history' };
+  const K = { note: 'calc.note', settings: 'calc.settings', v1: 'calc.history', pages: 'calc.pages' };
   function load(key, fallback) {
     try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); } catch (e) { return fallback; }
   }
@@ -812,13 +812,12 @@
     window.visualViewport.addEventListener('scroll', sizeApp);
   }
 
-  // ---------- history (iPhone app only) ----------
-  // Clear puts the page away instead of losing it; ‹ › step through put-away pages (newest first), like Antinote.
-  // An old page can be edited (it moves to the top at the next Clear) or deleted; pages go after a year.
-  // Storage is the app's (ios/Napkin/History.swift): its own copy plus a text file per page in its iCloud folder.
-  // (settings.plain makes the iPhone app behave like the web version — tools/make_intro.py takes the web guide's
-  // pictures that way.)
-  const NATIVE = !settings.plain && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.napkin;
+  // ---------- history ----------
+  // Clear/New puts the page away instead of losing it; ‹ › step through put-away pages (newest first), like Antinote.
+  // An old page can be edited (it moves to the top at the next Clear/New) or deleted; pages go after a year.
+  // Where the pages live: in the iPhone app, with the app (ios/Napkin/History.swift — its own copy plus a text file
+  // per page in its iCloud folder); in the web version, on the phone only (calc.pages in localStorage).
+  const NATIVE = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.napkin;
   const YEAR = 365 * 24 * 60 * MIN;
   let hist = [];           // put-away pages, newest first: { id, created, edited, text }
   let viewing = null;      // id of the history page on screen, or null for the live page
@@ -827,10 +826,15 @@
 
   const pageCtx = () => ({ rates: window.Rates.rates(), now: new Date() });
   const sharedText = t => window.Share.pageAsText(t, E.evaluatePage(t.split('\n'), pageCtx()));
+  // Keep a page that was added or changed / forget one that was removed. (The web version saves the whole list.)
   function storePage(p) {
+    if (!NATIVE) { save(K.pages, hist); return; }
     NATIVE.postMessage({ type: 'histSave', page: { id: p.id, created: p.created, edited: p.edited, text: p.text, shared: sharedText(p.text) } });
   }
-  function dropPage(p) { NATIVE.postMessage({ type: 'histDelete', id: p.id }); }
+  function dropPage(p) {
+    if (!NATIVE) { save(K.pages, hist); return; }
+    NATIVE.postMessage({ type: 'histDelete', id: p.id });
+  }
 
   // "2026-10-01 18.32.05" — also the file name in iCloud Drive.
   function pageId(ms) {
@@ -893,7 +897,6 @@
   }
 
   function goOlder() {
-    if (!NATIVE) return;
     const i = viewing ? hist.findIndex(x => x.id === viewing) : -1;
     const target = hist[i + 1];
     if (!target) return;
@@ -910,7 +913,6 @@
 
   const histDate = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   function renderHistBar() {
-    if (!NATIVE) return;
     const i = viewing ? hist.findIndex(x => x.id === viewing) : -1;
     els.older.classList.toggle('off', !hist[i + 1]);
     els.newer.classList.toggle('off', !viewing);
@@ -924,15 +926,6 @@
   $('clearBtn').addEventListener('click', () => {
     closeMenu();
     syncSel();
-    if (!NATIVE) {                                   // web version: no history
-      if (!text) return;
-      pushUndo({ text, sel: sel.slice() }, 'clear');
-      text = '';
-      sel = [0, 0];
-      changed();
-      toast('Page cleared', { label: 'Undo', run: undo });
-      return;
-    }
     const wasViewing = viewing;
     if (!wasViewing && !text.trim()) return;         // already a blank page
     leavePage();
@@ -970,21 +963,23 @@
     toast('Page deleted', { label: 'Undo', run: undo });
   }
 
-  if (NATIVE) {
-    document.body.classList.add('native');
-    $('clearBtn').textContent = 'Clear/New';         // here it doesn't wipe anything: the page goes into history
-    $('clearBtn').setAttribute('aria-label', 'New page (this one is kept)');
-    const n = window.__napkinNative || {};
-    icloud = n.icloud !== false;
+  // The pages put away so far: the app hands them over at launch; the web version keeps them itself.
+  {
     const now = Date.now();
-    for (const p of n.history || []) {
-      if (now - p.edited > YEAR) { dropPage(p); continue; }  // a year after its last edit, a page goes
+    const stored = NATIVE ? (window.__napkinNative || {}).history || [] : load(K.pages, []);
+    for (const p of Array.isArray(stored) ? stored : []) {
+      if (!p || typeof p.text !== 'string') continue;
+      if (now - p.edited > YEAR) { if (NATIVE) dropPage(p); continue; }   // a year after its last edit, a page goes
       hist.push({ id: p.id, created: p.created, edited: p.edited, text: p.text });
     }
     hist.sort((a, b) => b.edited - a.edited);
+    if (!NATIVE && hist.length !== (Array.isArray(stored) ? stored.length : 0)) save(K.pages, hist);
     els.older.addEventListener('click', goOlder);
     els.newer.addEventListener('click', goNewer);
     $('histDelete').addEventListener('click', deletePage);
+  }
+  if (NATIVE) {
+    icloud = (window.__napkinNative || {}).icloud !== false;
     els.histCloud.addEventListener('click', () => alert(
       'These pages are only on this iPhone. To keep them in iCloud too, sign in to iCloud and turn on iCloud Drive '
       + '(Settings ▸ your name ▸ iCloud ▸ Drive), with Napkin allowed in its list of apps.'));
@@ -1011,7 +1006,7 @@
 
   // ---------- help, and the first-launch guide (intro.js) ----------
   const INTRO = 1;         // raise it to show the guide once more to everyone
-  window.Intro.init({ native: !!NATIVE, onDone() { settings.intro = INTRO; save(K.settings, settings); ensureFocus(); } });
+  window.Intro.init({ onDone() { settings.intro = INTRO; save(K.settings, settings); ensureFocus(); } });
   window.HelpSheet.init({ version: APP_VERSION, onOpen: closeMenu, intro: window.Intro.open });
   if (settings.intro !== INTRO) window.Intro.open();
 
@@ -1079,6 +1074,8 @@
       location.reload();
     });
     navigator.serviceWorker.register('./sw.js').catch(() => {});
+    // Once the app's own files are stored, have the guide's pictures stored too (see sw.js).
+    navigator.serviceWorker.ready.then(reg => { if (reg.active) reg.active.postMessage('pictures'); }).catch(() => {});
   }
 
   window.__calc = {

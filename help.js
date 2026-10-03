@@ -26,12 +26,12 @@
       lines: [['45 + 18 + 12=', '75']], menu: true },
     { cap: 'Tap any number to change it. Everything below updates.',
       lines: [['4|5 + 18 + 12=', '75']] },
-    { cap: 'Clear wipes the page (Undo brings it back). Share sends the page as text or a picture.',
-      bar: 'Clear', web: true },
     { cap: 'Clear/New starts a fresh page and keeps the old one. Share sends the page as text or a picture.',
-      bar: 'Clear/New', native: true },
+      bar: 'Clear/New' },
     { cap: '‹ › step back through old pages. Edit or delete them there. They are kept in iCloud too, and go after a year.',
       lines: [['[[Tue Oct 1, 6:32 PM · 3 of 12]]', ''], ['45 + 18 + 12=', '75']], native: true },
+    { cap: '‹ › step back through old pages. Edit or delete them there. They stay on this phone, and go after a year.',
+      lines: [['[[Tue Oct 1, 6:32 PM · 3 of 12]]', ''], ['45 + 18 + 12=', '75']], web: true },
     { cap: 'Each new day gets a date line, so an old page stays readable.',
       lines: [['45 + 18 + 12=', '75'], ['', ''], ['— Fri, Sep 11, 2026', ''], ['320 mi to km', '~514.99 km']] },
   ];
@@ -59,8 +59,7 @@
     const page = el('div', 'hc-page');
     if (c.bar) {
       const bar = el('div', 'hc-bar');
-      if (c.native) bar.append(el('span', 'hc-btn hc-btn-text', '‹  ›'));
-      bar.append(el('span', 'hc-btn hc-btn-text', c.bar), el('span', 'hc-spacer'), el('span', 'hc-btn', '↶'), el('span', 'hc-btn', '?'), el('span', 'hc-btn', '⤴'));
+      bar.append(el('span', 'hc-btn hc-btn-text', '‹  ›'), el('span', 'hc-btn hc-btn-text', c.bar), el('span', 'hc-spacer'), el('span', 'hc-btn', '↶'), el('span', 'hc-btn', '?'), el('span', 'hc-btn', '⤴'));
       page.appendChild(bar);
     }
     for (const [src, ans] of c.lines || []) {
