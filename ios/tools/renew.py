@@ -217,7 +217,7 @@ def renew(now_mode):
             d["lastResult"] = "not reachable"
             if left < URGENT and now - d.get("lastNotified", 0) > 6 * 3600:
                 d["lastNotified"] = now
-                when = "has run out" if left <= 0 else "runs out " + dt.datetime.fromtimestamp(d.get("expires", now)).strftime("%a %-I:%M %p")
+                when = "has run out" if left <= 0 else "runs out " + dt.datetime.fromtimestamp(d.get("expires", now)).strftime("%a %b %-d, %-I:%M %p")
                 notify(f"The app on {d.get('name', 'the iPhone')} {when}. Bring it onto home Wi-Fi and unlock it.")
             continue
         have = installed(u)
@@ -282,7 +282,7 @@ def renew(now_mode):
         if r.returncode == 0:
             d.update(expires=exp, installed=now, lastResult="renewed", commit=commit, appTree=app_tree())
             log(f"{d.get('name', u)}: installed commit {commit}, signing good until "
-                f"{dt.datetime.fromtimestamp(exp):%a %b %-d %-I:%M %p}")
+                f"{dt.datetime.fromtimestamp(exp):%b %-d, %Y}")
         else:
             d["lastResult"] = "install failed"
             log(f"{d.get('name', u)}: install failed: {(r.stderr or r.stdout).strip()[:300]}")
@@ -297,7 +297,7 @@ def status():
         print("No phones yet — renew.py add <UDID> [name]")
     for u, d in st.get("devices", {}).items():
         exp = d.get("expires")
-        until = dt.datetime.fromtimestamp(exp).strftime("%a %b %-d %-I:%M %p") if exp else "unknown"
+        until = dt.datetime.fromtimestamp(exp).strftime("%b %-d, %Y") if exp else "unknown"
         print(f"{d.get('name', u)}  ({u}){'  [only while locked]' if d.get('whenLocked') else ''}{'  [while locked or Napkin open]' if d.get('lockedOrOpen') else ''}{'  [even while open]' if d.get('pushUpdates') else ''}\n  signing good until {until} · last: {d.get('lastResult', '-')}"
               f" · commit {d.get('commit', '-')}")
     if st.get("lastCheck"):
