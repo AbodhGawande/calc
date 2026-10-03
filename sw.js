@@ -1,7 +1,7 @@
 /* Offline support: the whole app is kept on the phone and opened from there — the internet is only used to look for
    a new version (and for exchange rates). Bump VERSION on every deploy — that is what makes phones pick up the new
    files. */
-const VERSION = 'calc-v31'; // keep the number in step with APP_VERSION in app.js
+const VERSION = 'calc-v32'; // keep the number in step with APP_VERSION in app.js
 // The app itself: fetched when a version is installed.
 const ASSETS = [
   './',
@@ -23,8 +23,9 @@ const ASSETS = [
   './intro/data.js',
 ];
 // The guide's screenshots (intro.js): fetched afterwards, when the page asks, so a new version never waits for them.
-const PICTURES = ['1', '2', '3', '4', '5', '6'].flatMap(p => ['a', 'b', 'c'].map(f => `./intro/${p}${f}.webp`))
-  .concat(['a', 'b', 'c', 'd'].map(f => `./intro/7${f}.webp`));   // page 7: Safari's "Add to Home Screen" steps
+// (page → its pictures; 6 = history, 7 = Safari's "Add to Home Screen" steps)
+const PICTURES = Object.entries({ 1: 'abc', 2: 'abc', 3: 'abc', 4: 'abc', 5: 'abc', 6: 'abcde', 7: 'abcd' })
+  .flatMap(([p, frames]) => [...frames].map(f => `./intro/${p}${f}.webp`));
 
 self.addEventListener('install', event => {
   // cache: 'reload' skips the browser's own copy (GitHub Pages lets it keep files for 10 minutes),

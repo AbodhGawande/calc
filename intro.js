@@ -19,7 +19,7 @@
   };
 
   // One per page of intro/data.js, in order.
-  const TITLES = ['Answers as you type', 'Add brackets anywhere', 'Words name numbers', 'Add line by line', 'Convert by typing', 'Old pages are kept', 'Add to Home Screen'];
+  const TITLES = ['Answers as you type', 'Add brackets anywhere', 'Words name numbers', 'Add line by line', 'Convert by typing', 'History is kept', 'Add to Home Screen'];
   const STEP = 1500;      // how long a screenshot stays up
   const HOLD = 2800;      // … and the last one of a page, before it starts again
 
@@ -53,7 +53,12 @@
       const [x0, y0, x1, y1] = [r.box[0] * W, r.box[1] * H, r.box[2] * W, r.box[3] * H], pad = W * 0.012;
       const ring = svg('rect', { class: 'intro-ring', x: x0 - pad, y: y0 - pad, width: x1 - x0 + 2 * pad, height: y1 - y0 + 2 * pad, rx: (y1 - y0) / 2 + pad });
       lines.appendChild(ring);
-      p.marks.push({ frames: r.frames, nodes: [ring] });
+      const mark = { frames: r.frames, nodes: [ring] };
+      if (r.press) {                      // this button gets "tapped": a soft pulse inside the ring (see setFrame)
+        mark.press = svg('rect', { class: 'intro-press', x: x0, y: y0, width: x1 - x0, height: y1 - y0, rx: (y1 - y0) / 2 });
+        lines.appendChild(mark.press);
+      }
+      p.marks.push(mark);
     }
     for (const n of p.notes || []) {
       const [tx, ty, ax, ay] = [n.tip[0] * W, n.tip[1] * H, n.at[0] * W, n.at[1] * H];
@@ -132,7 +137,14 @@
       img.classList.toggle('was', k === frame && k !== n);
       img.classList.toggle('on', k === n);
     });
-    for (const m of p.marks) m.nodes.forEach(node => node.classList.toggle('show', m.frames.includes(n)));
+    for (const m of p.marks) {
+      const on = m.frames.includes(n);
+      m.nodes.forEach(node => node.classList.toggle('show', on));
+      if (m.press) {                      // the tap plays again on every picture the ring is on
+        m.press.classList.remove('go');
+        if (on) { void m.press.getBoundingClientRect(); m.press.classList.add('go'); }
+      }
+    }
     frame = n;
   }
   function play() {

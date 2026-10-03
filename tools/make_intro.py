@@ -3,7 +3,8 @@ of the app running in the iOS Simulator. intro.js shows them inside a drawn phon
 
   python3 tools/make_intro.py            photograph every picture that needs no tap, then build
   python3 tools/make_intro.py 1a 5c      just those, then build
-  python3 tools/make_intro.py seed 6c    set that picture's page up in the simulator and stop (to tap something first) …
+  python3 tools/make_intro.py seed 6c    set that picture's page up in the simulator and stop (to tap something first:
+                                         6c, 6d and 6e need ‹ tapped once, twice, three times) …
   python3 tools/make_intro.py shoot 6c   … then photograph it and build
   python3 tools/make_intro.py build      only rebuild intro/ from the photos already taken (after changing a note)
 
@@ -54,9 +55,9 @@ HOUR = 3600 * 1000
 def old_pages(now):
     """Two earlier pages, so ‹ has somewhere to go."""
     return [
-        {"id": "2026-09-28 18.05.10", "created": now - 96 * HOUR, "edited": now - 96 * HOUR, "text": "320 flight\n+ 85 hotel\n+ 40 food",
-         "shared": "320 flight\n+ 85 hotel (405)\n+ 40 food (445)"},
-        {"id": "2026-09-30 09.12.44", "created": now - 50 * HOUR, "edited": now - 50 * HOUR, "text": "1500 $ to ₹", "shared": "1500 $ to ₹"},
+        {"id": "2026-09-28 18.05.10", "created": now - 96 * HOUR, "edited": now - 96 * HOUR, "text": "\n320 flight\n+ 85 hotel\n+ 40 food",
+         "shared": "\n320 flight\n+ 85 hotel (405)\n+ 40 food (445)"},
+        {"id": "2026-09-30 09.12.44", "created": now - 50 * HOUR, "edited": now - 50 * HOUR, "text": "\n1500 $ to ₹\n72 f to c", "shared": "\n1500 $ to ₹\n72 f to c"},
     ]
 
 
@@ -66,7 +67,7 @@ def with_bill(now):
 
 
 # One entry per picture. text: the page; caret: where its cursor sits (the end, unless given); history: pages already put away; ring: a button to ring (BUTTONS);
-# tap: needs a tap in the simulator before the photo (seed, tap, shoot); hide: a patch of the photo to paint over;
+# tap: needs a tap in the simulator before the photo (seed, tap, shoot); hide="icloud": paint over "Not in iCloud";
 # notes: (words, what they point at, where the label's middle sits from that spot: right, down). Spots:
 #   line N (middle of line N) · start N (its first letter) · word N K (its K-th blue word) · answer N · chip K ·
 #   a BUTTONS name · xy X Y (that very spot). Lines, words and chips count from 1.
@@ -89,10 +90,14 @@ FRAMES = {
     "5a": dict(text="320 mi to km", ring="conv", notes=[("Units", "line 1", 0, 200), LIST]),
     "5b": dict(text="320 mi to km\n1500 $ to ₹", ring="conv", notes=[("Money", "line 2", 0, 200), LIST]),
     "5c": dict(text="320 mi to km\n1500 $ to ₹\n5 pm cst to ist", ring="conv", notes=[("Time zones", "line 3", 0, 200), LIST]),
-    # the last page leaves the first line empty, so the labels under the top bar have room
-    "6a": dict(text="\n" + BILL, history=old_pages, ring="clear", notes=[("New page", "clear", 0, 78)]),
-    "6b": dict(text="", history=with_bill, ring="older", notes=[("Go back", "older", 90, 78)]),
-    "6c": dict(text="", history=with_bill, tap="‹ (older page)", hide=(646, 358, 880, 436), notes=[("Your old page", "histbar", 0, 84)]),
+    # History: Clear/New puts the page away, then ‹ is tapped three times, each tap one page further back.
+    # (Every page here leaves its first line empty, so the labels under the top bar have room. press = the ring
+    # "gets tapped" just before the next picture.)
+    "6a": dict(text="\n" + BILL, history=old_pages, ring="clear", press=True, notes=[("New page", "clear", 0, 78)]),
+    "6b": dict(text="", history=with_bill, ring="older", press=True, notes=[("Go back", "older", 90, 78)]),
+    "6c": dict(text="", history=with_bill, tap="‹ once", hide="icloud", ring="older", press=True),
+    "6d": dict(text="", history=with_bill, tap="‹ twice", hide="icloud", ring="older", press=True),
+    "6e": dict(text="", history=with_bill, tap="‹ three times", hide="icloud", notes=[("Kept for a year", "histbar", 0, 84)]),
     # Safari's own steps (photographed by hand, see the top): ring = the thing to tap, as (left, top, right, bottom)
     "7a": dict(manual=True, ring=(290, 2394, 398, 2502), notes=[("Tap here", "xy 344 2380", 170, -170)]),
     "7b": dict(manual=True, ring=(318, 994, 650, 1110), notes=[("Share", "xy 484 980", 200, -150)]),
@@ -238,9 +243,13 @@ def build():
         for i, name in enumerate(shots):
             f = FRAMES[name]
             im = Image.open(SHOTS / f"{name}.png").convert("RGB")
-            if f.get("hide"):
-                x0, y0, x1, y1 = f["hide"]
-                im.paste(im.getpixel((x0 - 8, (y0 + y1) // 2)), f["hide"])
+            if f.get("hide") == "icloud":                              # the simulator has no iCloud account; phones do
+                px, (_, top, _, bottom) = im.load(), BUTTONS["histbar"]
+                grey = [x for x in range(300, 1000) for y in range(top + 8, bottom - 8, 3)
+                        if abs(px[x, y][0] - px[x, y][2]) < 14 and 90 < px[x, y][0] < 175]
+                if grey:
+                    box = (min(grey) - 10, top + 6, max(grey) + 12, bottom - 6)
+                    im.paste(im.getpixel((box[0] - 8, (top + bottom) // 2)), box)
             small = im.crop((0, 0, W, CUT)).resize((WIDTH, round(CUT * WIDTH / W)), Image.LANCZOS)
             small.save(OUT / f"{name}.webp", "WEBP", quality=84, method=6)
             lines, chips = (None, None) if f.get("manual") else layout(im)
@@ -262,7 +271,7 @@ def build():
                 if same:
                     same["frames"].append(i)
                 else:
-                    rings.append({"box": box, "frames": [i]})
+                    rings.append({"box": box, "frames": [i], **({"press": True} if f.get("press") else {})})
         data["pages"].append({"shots": shots, "notes": notes, "rings": rings, **({"when": WHEN[page]} if page in WHEN else {}), **({"whole": True} if page in WHOLE else {})})
     (OUT / "data.js").write_text("/* Made by tools/make_intro.py: the guide's pictures and where their notes go (fractions of the picture). */\n"
                                  "window.INTRO_SHOTS = " + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + ";\n")
@@ -323,7 +332,8 @@ if __name__ == "__main__":
         print(f"{args[1]}: ready" + (f" — tap {tap}, then: make_intro.py shoot {args[1]}" if tap else ""))
     elif args[:1] == ["shoot"]:
         shoot(args[1])
-        build()
+        if all((SHOTS / f"{n}.png").exists() for n in every):
+            build()
     elif args[:1] == ["build"]:
         build()
     else:
