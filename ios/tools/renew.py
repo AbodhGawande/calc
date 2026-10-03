@@ -13,8 +13,9 @@
                                --locked-or-open = only while locked OR while Napkin is running on it (someone else's);
                                --push-updates = (our own phones) install even while Napkin is open (it just closes)
 
-A phone isn't updated while Napkin is open on it (an update closes the app) unless it has --push-updates or less than
-12 hours of signing are left — also with --now (add --force to push anyway).
+A phone isn't updated while Napkin is open on it and the phone is unlocked (an update closes the app) unless it has
+--push-updates or less than 12 hours of signing are left — also with --now (add --force to push anyway). A locked
+phone is updated even if Napkin was left open on it.
 If Napkin has been removed from a phone, it is NOT put back (the phone is skipped until it's installed by hand).
 
 It builds the last commit PUSHED to GitHub (AbodhGawande/calc, main), cloned into ~/Library/Caches/Napkin —
@@ -231,7 +232,7 @@ def renew(now_mode):
             d["lastResult"] = "app removed from the phone"
             continue
         if left > BUSY_OK and not d.get("pushUpdates") and not d.get("lockedOrOpen") and "--force" not in sys.argv \
-                and app_open(u):                                              # also for manual pushes
+                and app_open(u) and not locked(u):        # (a locked phone isn't being used, even with Napkin left open)
             if d.get("lastResult") != "waiting: Napkin is open":
                 log(f"{d.get('name', u)}: Napkin is open — trying again later")
             d["lastResult"] = "waiting: Napkin is open"

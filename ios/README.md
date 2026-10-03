@@ -24,7 +24,8 @@ Phones: Abodh's iPhone 00008130-000C358900698D3A · Amruta's iPhone 00008130-001
 ## Updates
 `tools/install-renewer.sh` installs a LaunchAgent (com.abodh.napkin.renew) that runs `renew.py renew` every 3 hours:
 it builds the last commit **pushed** to GitHub and installs it over Wi-Fi on every phone that is behind (and renews the
-signing when < 3 days are left). A phone is skipped while Napkin is open on it, except Abodh's (`--push-updates`).
+signing when < 3 days are left). A phone is skipped while Napkin is open on it and the phone is unlocked (it waits for
+the phone to be locked), except Abodh's (`--push-updates`).
 `renew.py status` · `renew.py renew --now` · `renew.py add <UDID> [name] [--push-updates]`.
 Always `git push` after committing. Log: `~/Library/Logs/Napkin/renew.log`.
 
