@@ -20,7 +20,7 @@ const ASSETS = [
   './icons/icon-maskable-512.png',
   // the guide's screenshots (intro.js; the web version's set)
   './intro/data.js',
-  ...['1a', '1b', '1c', '2a', '2b', '2c', '3a', '3b', '3c', '4a', '4b', '4c'].map(n => `./intro/w${n}.webp`),
+  ...['1a', '1b', '1c', '2a', '2b', '2c', '3a', '3b', '3c', '4a', '4b', '4c', '5a', '5b', '5c'].map(n => `./intro/w${n}.webp`),
 ];
 
 self.addEventListener('install', event => {

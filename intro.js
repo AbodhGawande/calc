@@ -14,8 +14,8 @@
     return n;
   };
 
-  // One per page of intro/data.js, in order (the web version has no fifth page: no history there).
-  const TITLES = ['Answers as you type', 'Words name numbers', 'Add line by line', 'Convert by typing', 'Old pages are kept'];
+  // One per page of intro/data.js, in order (the web version has no last page: no history there).
+  const TITLES = ['Answers as you type', 'Add brackets anywhere', 'Words name numbers', 'Add line by line', 'Convert by typing', 'Old pages are kept'];
   const STEP = 1500;      // how long a screenshot stays up
   const HOLD = 2800;      // … and the last one of a page, before it starts again
 

@@ -48,7 +48,7 @@ kept. The web version below stays as it is (no history), for sharing.
   everyone), replayable from the top of the help page. A few pages to swipe through, each a title of four words at
   most over a drawn phone that plays real screenshots in a loop, with small labels pointing at what matters. The
   screenshots and label positions (`intro/*.webp`, `intro/data.js`) are made from the simulator by
-  `tools/make_intro.py` — rerun it when the look of the app changes. The web version has its own set (`w*.webp`, four
+  `tools/make_intro.py` — rerun it when the look of the app changes. The web version has its own set (`w*.webp`, five
   pages: no history). The page starts blank behind the guide.
 - **ABC** brings up the iPhone keyboard for words. The orange calculator button in the top bar brings the keypad back.
 - **Conversions** (`units.js`): type `50 km to mi`, `5 ft 10 in to cm`, `180 cm to ft` (feet always show as feet and

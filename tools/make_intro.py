@@ -2,12 +2,12 @@
 of the app running in the iOS Simulator. intro.js shows them inside a drawn phone, with the notes as small labels.
 
   python3 tools/make_intro.py            photograph every picture that needs no tap, then build
-  python3 tools/make_intro.py 1a w4c     just those, then build
-  python3 tools/make_intro.py seed 5c    set that picture's page up in the simulator and stop (to tap something first) …
-  python3 tools/make_intro.py shoot 5c   … then photograph it and build
+  python3 tools/make_intro.py 1a w5c     just those, then build
+  python3 tools/make_intro.py seed 6c    set that picture's page up in the simulator and stop (to tap something first) …
+  python3 tools/make_intro.py shoot 6c   … then photograph it and build
   python3 tools/make_intro.py build      only rebuild intro/ from the photos already taken (after changing a note)
 
-Two sets: the iPhone app's (1a … 5c) and the web version's (w1a … w4c: no history buttons, so no page 5 — the app
+Two sets: the iPhone app's (1a … 6c) and the web version's (w1a … w5c: no history buttons, so no page 6 — the app
 is put in its "plain" mode for those). For each picture the app is reinstalled empty in the simulator, given a saved
 page (and history), opened and photographed (photos are kept in /tmp/napkin-intro-shots). `build` saves each photo small, finds the written lines / answers / name chips in it, and writes data.js:
 for each guide page, its pictures and its notes (words, the spot they point at, where the label sits).
@@ -33,6 +33,8 @@ W, CUT = 1206, 2622                                             # the picture is
 BELOW_BAR, CHIPS_TOP = 354, 1333                                # the writing starts / the name chips' row
 BUTTONS = {                                                     # (left, top, right, bottom)
     "conv": (329, 1640, 590, 1791),      # ⇄
+    "open": (329, 1464, 590, 1615),      # (
+    "close": (615, 1464, 877, 1615),     # )
     "clear": (337, 207, 648, 333),       # Clear/New
     "older": (42, 207, 174, 333),        # ‹
     "histbar": (40, 352, 640, 442),      # the blue "Fri, Oct 2 · 1 of 3" bar (its date)
@@ -58,7 +60,7 @@ def with_bill(now):
                               "shared": "\n45 food + 18 tip (63)\nfood + tip = bill (63)\nbill ÷ 4 (15.75)"}]
 
 
-# One entry per picture. text: the page; history: pages already put away; ring: a button to ring (BUTTONS);
+# One entry per picture. text: the page; caret: where its cursor sits (the end, unless given); history: pages already put away; ring: a button to ring (BUTTONS);
 # tap: needs a tap in the simulator before the photo (seed, tap, shoot); hide: a patch of the photo to paint over;
 # notes: (words, what they point at, where the label's middle sits from that spot: right, down). Spots:
 #   line N (middle of line N) · start N (its first letter) · word N K (its K-th blue word) · answer N · chip K ·
@@ -69,21 +71,25 @@ FRAMES = {
     "1a": dict(text="45 +", notes=[JUST]),
     "1b": dict(text="45 + 18", notes=[JUST, ANSWER]),
     "1c": dict(text="45 + 18 + 12", notes=[JUST, ANSWER]),
-    "2a": dict(text="45 food + 18 tip", notes=[("A word names it", "word 1 1", 60, 200)]),
-    "2b": dict(text="45 food + 18 tip\nfood + tip = bill", notes=[("Use the names", "word 2 1", 130, 200), ("Names the total", "word 2 3", 60, 400)]),
-    "2c": dict(text=BILL, notes=[("Or tap a name", "chip 1", 190, -210)]),
-    "3a": dict(text="320 flight", notes=[("First number", "start 1", 200, 200)]),
-    "3b": dict(text="320 flight\n+ 85 hotel", notes=[("Start with +", "start 2", 190, 200), ("Running total", "answer 2", -190, 400)]),
-    "3c": dict(text="320 flight\n+ 85 hotel\n+ 40 food", notes=[("Start with +", "start 3", 190, 200), ("Running total", "answer 3", -190, 400)]),
-    "4a": dict(text="320 mi to km", ring="conv", notes=[("Units", "line 1", 0, 200), LIST]),
-    "4b": dict(text="320 mi to km\n1500 $ to ₹", ring="conv", notes=[("Money", "line 2", 0, 200), LIST]),
-    "4c": dict(text="320 mi to km\n1500 $ to ₹\n5 pm cst to ist", ring="conv", notes=[("Time zones", "line 3", 0, 200), LIST]),
-    # page 5 leaves the first line empty, so the labels under the top bar have room
-    "5a": dict(text="\n" + BILL, history=old_pages, ring="clear", notes=[("New page", "clear", 0, 78)]),
-    "5b": dict(text="", history=with_bill, ring="older", notes=[("Go back", "older", 90, 78)]),
-    "5c": dict(text="", history=with_bill, tap="‹ (older page)", hide=(646, 358, 880, 436), notes=[("Your old page", "histbar", 0, 84)]),
+    # the cursor is put back where it was (caret), so the bracket being added shows where you tapped
+    "2a": dict(text="5 + 65 × 8", notes=[("Tap where you want", "start 1", 190, 200)]),
+    "2b": dict(text="(5 + 65 × 8", caret=1, ring="open", notes=[("Add a bracket", "open", -120, -236)]),
+    "2c": dict(text="(5 + 65) × 8", caret=8, ring="close", notes=[("Answer updates", "answer 1", -190, 400)]),
+    "3a": dict(text="45 food + 18 tip", notes=[("A word names it", "word 1 1", 60, 200)]),
+    "3b": dict(text="45 food + 18 tip\nfood + tip = bill", notes=[("Use the names", "word 2 1", 130, 200), ("Names the total", "word 2 3", 60, 400)]),
+    "3c": dict(text=BILL, notes=[("Or tap a name", "chip 1", 190, -210)]),
+    "4a": dict(text="320 flight", notes=[("First number", "start 1", 200, 200)]),
+    "4b": dict(text="320 flight\n+ 85 hotel", notes=[("Start with +", "start 2", 190, 200), ("Running total", "answer 2", -190, 400)]),
+    "4c": dict(text="320 flight\n+ 85 hotel\n+ 40 food", notes=[("Start with +", "start 3", 190, 200), ("Running total", "answer 3", -190, 400)]),
+    "5a": dict(text="320 mi to km", ring="conv", notes=[("Units", "line 1", 0, 200), LIST]),
+    "5b": dict(text="320 mi to km\n1500 $ to ₹", ring="conv", notes=[("Money", "line 2", 0, 200), LIST]),
+    "5c": dict(text="320 mi to km\n1500 $ to ₹\n5 pm cst to ist", ring="conv", notes=[("Time zones", "line 3", 0, 200), LIST]),
+    # the last page leaves the first line empty, so the labels under the top bar have room
+    "6a": dict(text="\n" + BILL, history=old_pages, ring="clear", notes=[("New page", "clear", 0, 78)]),
+    "6b": dict(text="", history=with_bill, ring="older", notes=[("Go back", "older", 90, 78)]),
+    "6c": dict(text="", history=with_bill, tap="‹ (older page)", hide=(646, 358, 880, 436), notes=[("Your old page", "histbar", 0, 84)]),
 }
-PAGES = {"native": ["1", "2", "3", "4", "5"], "web": ["1", "2", "3", "4"]}
+PAGES = {"native": ["1", "2", "3", "4", "5", "6"], "web": ["1", "2", "3", "4", "5"]}   # the last one is history: app only
 
 
 def simctl(*args, check=True):
@@ -103,7 +109,7 @@ def seed(name):
     (home / "History").mkdir(parents=True, exist_ok=True)
     text = f["text"]
     saved = {
-        "calc.note": json.dumps({"text": text, "sel": [len(text), len(text)], "updatedAt": now}),
+        "calc.note": json.dumps({"text": text, "sel": [f.get("caret", len(text))] * 2, "updatedAt": now}),
         "calc.settings": json.dumps({"intro": 1, "plain": web}),   # the guide itself stays out of the picture
     }
     (home / "storage.json").write_text(json.dumps(saved))
@@ -187,7 +193,7 @@ def spot(spec, lines, chips):
     n = [int(v) for v in n]
     if kind in BUTTONS:
         x0, y0, x1, y1 = BUTTONS[kind]
-        return ((x0 + x1) // 2, y0 - 26) if kind == "conv" else ((x0 + x1) // 2, y1 + 24)
+        return ((x0 + x1) // 2, y0 - 26) if kind in ("conv", "open", "close") else ((x0 + x1) // 2, y1 + 24)
     if kind == "chip":
         a, b = chips[n[0] - 1]
         return (a + b) // 2, CHIPS_TOP - 16
@@ -253,7 +259,7 @@ def build():
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    every = [n for n in FRAMES] + ["w" + n for n in FRAMES if n[0] != "5"]
+    every = [n for n in FRAMES] + ["w" + n for n in FRAMES if n[0] in PAGES["web"]]
     if args[:1] == ["seed"]:
         seed(args[1])
         tap = FRAMES[args[1].lstrip("w")].get("tap")
