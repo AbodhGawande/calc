@@ -27,7 +27,14 @@ it builds the last commit **pushed** to GitHub and installs it over Wi-Fi on eve
 signing when < 3 days are left). A phone is skipped while Napkin is open on it and the phone is unlocked (it waits for
 the phone to be locked), except Abodh's (`--push-updates`).
 `renew.py status` · `renew.py renew --now` · `renew.py add <UDID> [name] [--push-updates]`.
-Always `git push` after committing. Log: `~/Library/Logs/Napkin/renew.log`.
+Always `git push` after committing.
+
+On the Mac the updater is `/Applications/Abodh Apps/Helpers/napkin-renew.py` (a copy of `tools/renew.py`), started by
+the LaunchAgent, and everything it keeps is in `~/Library/Abodh Apps Data/Napkin/` (the scheme in
+`~/Documents/Claude/Abodh Apps Data.md`; moved there 2026-10-07): `settings.json` = which phones and how each may be
+updated · `Data/updater.json` = its record of each phone · `Logs/renew.log` · `Cache/` = the clone, the build, and
+the guide's photos (`tools/make_intro.py`). It makes no backups of its own. On a new Mac: copy that folder over, then
+run `tools/install-renewer.sh` once.
 
 ## History (iPhone app only)
 Clear/New puts the page away and starts a fresh one; ‹ › in the top bar step through put-away pages (newest first),

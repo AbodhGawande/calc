@@ -18,22 +18,34 @@ A phone isn't updated while Napkin is open on it and the phone is unlocked (an u
 phone is updated even if Napkin was left open on it.
 If Napkin has been removed from a phone, it is NOT put back (the phone is skipped until it's installed by hand).
 
-It builds the last commit PUSHED to GitHub (AbodhGawande/calc, main), cloned into ~/Library/Caches/Napkin —
-never the working folder, so a half-finished edit can't reach the phones, and the LaunchAgent never needs access to
-~/Documents. Only the app is installed; the page and history saved on the phone are untouched.
+It builds the last commit PUSHED to GitHub (AbodhGawande/calc, main), cloned into its Cache folder — never the
+working folder, so a half-finished edit can't reach the phones, and the LaunchAgent never needs access to ~/Documents.
+Only the app is installed; the page and history saved on the phone are untouched.
 
-Installed by tools/install-renewer.sh to ~/Library/Application Support/Napkin/renew.py
-State: ~/Library/Application Support/Napkin/renew.json · log: ~/Library/Logs/Napkin/renew.log
+Installed by tools/install-renewer.sh as /Applications/Abodh Apps/Helpers/napkin-renew.py. What it keeps is in
+~/Library/Abodh Apps Data/Napkin (the scheme every app follows, ~/Documents/Claude/Abodh Apps Data.md):
+  settings.json      which phones it looks after, and how each may be updated (what `add` was told)
+  Data/updater.json  its own record of each phone: signing date, installed version, last result
+  Logs/renew.log     what it did
+  Cache/             the clone, the build, set-aside signing profiles (and the guide's photos, tools/make_intro.py)
+Until 2026-10-07 these were in ~/Library/Application Support/Napkin, ~/Library/Logs/Napkin and
+~/Library/Caches/Napkin; move_in() moves them over once.
 """
 import datetime as dt, fcntl, glob, json, os, plistlib, shutil, subprocess, sys, tempfile, time
 
 HOME = os.path.expanduser("~")
 BID = "com.abodh.napkin"
 REPO_URL = "https://github.com/AbodhGawande/calc.git"
-STATE = f"{HOME}/Library/Application Support/Napkin/renew.json"
-LOG = f"{HOME}/Library/Logs/Napkin/renew.log"
+DATA_HOME = f"{HOME}/Library/Abodh Apps Data/Napkin"
+SETTINGS = f"{DATA_HOME}/settings.json"
+STATE = f"{DATA_HOME}/Data/updater.json"
+LOG = f"{DATA_HOME}/Logs/renew.log"
+CACHE = f"{DATA_HOME}/Cache"
+OLD_STATE = f"{HOME}/Library/Application Support/Napkin/renew.json"      # where things were until 2026-10-07
+OLD_LOGS = f"{HOME}/Library/Logs/Napkin"
+OLD_CACHE = f"{HOME}/Library/Caches/Napkin"
+CHOSEN = ("name", "pushUpdates", "whenLocked", "lockedOrOpen")           # a phone's settings; the rest is the record
 PROFILES = f"{HOME}/Library/Developer/Xcode/UserData/Provisioning Profiles"
-CACHE = f"{HOME}/Library/Caches/Napkin"
 SRC = f"{CACHE}/src"
 DERIVED = f"{CACHE}/build"
 APP = f"{DERIVED}/Build/Products/Release-iphoneos/Napkin.app"
@@ -44,9 +56,14 @@ os.environ["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
 
 
 def log(msg):
-    os.makedirs(os.path.dirname(LOG), exist_ok=True)
-    with open(LOG, "a") as f:
-        f.write(f"{dt.datetime.now():%Y-%m-%d %H:%M:%S}  {msg}\n")
+    for path in (LOG, f"{OLD_LOGS}/renew.log"):      # the old place only if the new one can't be written
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "a") as f:
+                f.write(f"{dt.datetime.now():%Y-%m-%d %H:%M:%S}  {msg}\n")
+            return
+        except OSError:
+            continue
 
 
 def notify(msg):
@@ -60,18 +77,102 @@ def run(args, timeout=600, cwd=None):
         return subprocess.CompletedProcess(args, 124, "", "timed out")
 
 
-def load_state():
+def read(path, default):
     try:
-        return json.load(open(STATE))
+        return json.load(open(path))
     except Exception:
-        return {"devices": {}}
+        return default
 
 
-def save_state(st):
-    os.makedirs(os.path.dirname(STATE), exist_ok=True)
-    tmp = STATE + ".tmp"
-    json.dump(st, open(tmp, "w"), indent=1, sort_keys=True)
-    os.replace(tmp, STATE)
+def write(path, value):
+    """Write a file whole (never half), and only when it would change."""
+    text = json.dumps(value, indent=1, sort_keys=True, ensure_ascii=False) + "\n"
+    try:
+        if open(path).read() == text:
+            return
+    except Exception:
+        pass
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "w") as f:
+        f.write(text)
+    os.replace(path + ".tmp", path)
+
+
+def move_in():
+    """Once: bring what the updater kept in macOS's general folders into ~/Library/Abodh Apps Data/Napkin.
+    Things are moved, never copied, and nothing that wasn't moved is deleted. Whatever can't be moved stays in use
+    where it is (see load_state) and is tried again on the next run."""
+    moved, problems = [], []
+
+    def move(old, new):
+        if not os.path.lexists(old):
+            return
+        if os.path.lexists(new):
+            problems.append(f"{old} was left where it was: {new} already exists")
+            return
+        try:
+            os.makedirs(os.path.dirname(new), exist_ok=True)
+            shutil.move(old, new)
+            moved.append(f"{old} → {new}")
+        except Exception as e:
+            problems.append(f"{old} could not be moved: {e}")
+
+    # the one old file held both the phones' settings and the updater's record of them: it becomes two
+    if os.path.exists(OLD_STATE) and not os.path.exists(SETTINGS) and not os.path.exists(STATE):
+        try:
+            save_state(json.load(open(OLD_STATE)), moving=True)
+            if load_state() != json.load(open(OLD_STATE)):
+                raise ValueError("the new files don't say what the old one did")
+            os.remove(OLD_STATE)
+            moved.append(f"{OLD_STATE} → {SETTINGS} + {STATE}")
+        except Exception as e:
+            for f in (SETTINGS, STATE):              # leave no half-made new files: the old one stays in charge
+                if os.path.exists(f):
+                    os.remove(f)
+            problems.append(f"{OLD_STATE} could not be moved: {e}")
+    for name in ("renew.log", "renew-errors.log"):
+        move(f"{OLD_LOGS}/{name}", f"{DATA_HOME}/Logs/{name}")
+    if os.path.isdir(OLD_CACHE):
+        for name in sorted(os.listdir(OLD_CACHE)):
+            move(f"{OLD_CACHE}/{name}", f"{CACHE}/{name}")
+    for line in moved:
+        log("moved: " + line)
+    for line in problems:
+        log("NOT moved: " + line)
+    for folder in (OLD_LOGS, OLD_CACHE, os.path.dirname(OLD_STATE)):
+        try:
+            os.rmdir(folder)                          # only goes if it's empty
+            log(f"removed the old folder, now empty: {folder}")
+        except OSError:
+            pass
+    return moved, problems
+
+
+def still_old():
+    """True while the move hasn't worked: the old file stays in charge."""
+    return os.path.exists(OLD_STATE) and not os.path.exists(SETTINGS)
+
+
+def load_state():
+    """Every phone looked after: its settings (settings.json) together with the updater's record of it."""
+    if still_old():
+        return read(OLD_STATE, {"devices": {}})
+    record = read(STATE, {})
+    st = {k: v for k, v in record.items() if k != "devices"}
+    st["devices"] = {u: {**record.get("devices", {}).get(u, {}), **chosen}
+                     for u, chosen in read(SETTINGS, {}).get("phones", {}).items()}
+    return st
+
+
+def save_state(st, moving=False):
+    if still_old() and not moving:
+        return write(OLD_STATE, st)
+    devs = st.get("devices", {})
+    settings = read(SETTINGS, {})
+    settings["phones"] = {u: {k: d[k] for k in CHOSEN if k in d} for u, d in devs.items()}
+    write(SETTINGS, settings)
+    write(STATE, {**{k: v for k, v in st.items() if k != "devices"},
+                  "devices": {u: {k: v for k, v in d.items() if k not in CHOSEN} for u, d in devs.items()}})
 
 
 def paired_phones():
@@ -307,6 +408,14 @@ def status():
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
+    for line in move_in()[1]:
+        print("not moved:", line)
+    try:
+        os.makedirs(CACHE, exist_ok=True)
+    except OSError:                               # the new home can't be used: carry on in the old cache folder
+        CACHE = OLD_CACHE
+        SRC, DERIVED = f"{CACHE}/src", f"{CACHE}/build"
+        APP = f"{DERIVED}/Build/Products/Release-iphoneos/Napkin.app"
     if cmd in ("renew", "add"):                   # anything that writes the state: one at a time
         os.makedirs(CACHE, exist_ok=True)
         lock = open(f"{CACHE}/renew.lock", "w")

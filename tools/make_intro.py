@@ -9,7 +9,7 @@ of the app running in the iOS Simulator. intro.js shows them inside a drawn phon
   python3 tools/make_intro.py build      only rebuild intro/ from the photos already taken (after changing a note)
 
 The web version looks the same, so both use these pictures. For each picture the app is reinstalled empty in the
-simulator, given a saved page (and history), opened and photographed (photos are kept in ~/Library/Caches/Napkin/intro-shots). `build` saves each photo small, finds the written lines / answers / name chips in it, and writes data.js:
+simulator, given a saved page (and history), opened and photographed (photos are kept in ~/Library/Abodh Apps Data/Napkin/Cache/intro-shots). `build` saves each photo small, finds the written lines / answers / name chips in it, and writes data.js:
 for each guide page, its pictures and its notes (words, the spot they point at, where the label sits).
 Titles and order are in intro.js.
 
@@ -32,7 +32,7 @@ OUT = ROOT / "intro"
 SIM = "C603D1E3-1E78-40C9-80B0-3819E696BA8C"          # iPhone 18 Pro
 BID = "com.abodh.napkin"
 APP = ROOT / "ios/build/sim/Build/Products/Debug-iphonesimulator/Napkin.app"
-SHOTS = Path.home() / "Library/Caches/Napkin/intro-shots"      # the photos, kept between runs
+SHOTS = Path.home() / "Library/Abodh Apps Data/Napkin/Cache/intro-shots"      # the photos, kept between runs
 
 # where things are on that screen, in pixels
 W, CUT = 1206, 2622                                             # the picture is the whole screen
